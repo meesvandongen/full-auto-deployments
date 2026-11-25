@@ -25,26 +25,44 @@ the `demo/full-auto` Gitea repository and registers it with Argo CD. No GitHub
 repository is needed at runtime. Kargo will use this same local Git server when
 its Stages and Warehouse are defined with the application.
 
-| Service | Address |
-| --- | --- |
-| Gitea | http://localhost:3000 |
-| Local registry (from host) | `localhost:5001` |
-| Local registry (from cluster) | `registry:5000` |
-| Registry HTTPS endpoint (Kargo image discovery) | `registry:5443` |
-| Git URL (from host) | `http://localhost:3000/demo/full-auto.git` |
-| Git URL (from cluster) | `https://gitea:3443/demo/full-auto.git` |
+## URLs
 
-Generated passwords and the runner token are kept in `.local/credentials.env`
-(ignored by Git). The Gitea and Kargo administrator username is `demo` and
-`admin`, respectively. To access the dashboards, use separate terminals:
+| Service | URL from your Mac | Access |
+| --- | --- | --- |
+| Gitea | http://localhost:3000 | Available after `scripts/up.sh` |
+| Demo repository and CI runs | http://localhost:3000/demo/full-auto and http://localhost:3000/demo/full-auto/actions | Available after the initial push |
+| Image registry tags | http://localhost:5001/v2/demo-app/tags/list | Available after the first successful CI build |
+| Argo CD | https://localhost:8081 | Port-forward required |
+| Kargo | https://localhost:8082 | Port-forward required |
+| Dev app | http://localhost:8083/api/double?value=21 | Port-forward required |
+| Prod app | http://localhost:8084/api/double?value=21 | Port-forward required |
+
+Run each port-forward you need in a separate terminal (they remain active
+until stopped):
 
 ```sh
 kubectl -n argocd port-forward svc/argocd-server 8081:443
 kubectl -n kargo port-forward svc/kargo-api 8082:443
+kubectl -n demo-dev port-forward svc/demo-app 8083:80
+kubectl -n demo-prod port-forward svc/demo-app 8084:80
 ```
 
-Argo CD is at https://localhost:8081; Kargo is at https://localhost:8082.
-Accept the local certificates. Retrieve the Argo CD initial password with
+The app also serves `/livez`, `/readyz`, `/check`, and `/metrics` on either
+app URL. Argo CD and Kargo use self-signed certificates; accept the local
+browser warnings.
+
+These addresses are for components running **inside** Docker or Kubernetes,
+not for a browser on your Mac:
+
+| Component | Internal address |
+| --- | --- |
+| Gitea Git repository | `https://gitea:3443/demo/full-auto.git` |
+| Registry used for image pulls | `registry:5000` |
+| Registry used by Kargo for image discovery | `registry:5443` |
+
+Generated passwords and the runner token are kept in `.local/credentials.env`
+(ignored by Git). The Gitea and Kargo administrator username is `demo` and
+`admin`, respectively. Retrieve the Argo CD initial password with
 `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`.
 The other passwords are in `.local/credentials.env`; do not commit that file.
 
@@ -83,8 +101,7 @@ To inspect the deployment:
 kubectl -n demo get warehouses,freight,stages,promotions
 kubectl -n demo-dev get rollouts,analysisruns
 kubectl -n demo-prod get rollouts,analysisruns
-kubectl -n demo-dev port-forward svc/demo-app 8080:80
-curl 'http://localhost:8080/api/double?value=21'
+curl 'http://localhost:8083/api/double?value=21'
 ```
 
 For a canary-abort demonstration, set `faultMode: true` in the chart's
