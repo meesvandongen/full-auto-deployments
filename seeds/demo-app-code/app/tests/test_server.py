@@ -45,6 +45,7 @@ class HealthyServerTests(ServerTests):
             metrics = response.read().decode()
         self.assertIn('demo_requests_total{status="ok"} 1\n', metrics)
         self.assertIn('demo_requests_total{status="error"} 1\n', metrics)
+        self.assertIn('demo_check_success{version="test"} 1\n', metrics)
 
 
 class FaultyServerTests(ServerTests):
@@ -55,3 +56,5 @@ class FaultyServerTests(ServerTests):
         self.assertEqual(self.request("/readyz")[0], 200)
         self.assertEqual(self.request("/api/double?value=21")[1]["result"], 43)
         self.assertEqual(self.request("/check"), (200, {"ok": False, "version": "test"}))
+        with urlopen(f"http://127.0.0.1:{self.server.server_port}/metrics") as response:
+            self.assertIn('demo_check_success{version="test"} 0\n', response.read().decode())

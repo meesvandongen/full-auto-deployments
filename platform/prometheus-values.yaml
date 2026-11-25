@@ -1,0 +1,25 @@
+alertmanager:
+  enabled: false
+kube-state-metrics:
+  enabled: false
+prometheus-node-exporter:
+  enabled: false
+prometheus-pushgateway:
+  enabled: false
+server:
+  persistentVolume:
+    enabled: false
+  retention: 1d
+  global:
+    scrape_interval: 5s
+    scrape_timeout: 4s
+    evaluation_interval: 5s
+extraScrapeConfigs: |
+  - job_name: demo-dev-canary
+    static_configs:
+      - targets:
+          - demo-app-canary.demo-dev.svc.cluster.local:80
+  - job_name: demo-prod-canary
+    static_configs:
+      - targets:
+          - demo-app-canary.demo-prod.svc.cluster.local:80

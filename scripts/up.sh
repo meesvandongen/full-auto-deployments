@@ -93,6 +93,8 @@ kubectl config use-context k3d-full-auto >/dev/null
 
 helm repo add argo https://argoproj.github.io/argo-helm --force-update
 helm repo add jetstack https://charts.jetstack.io --force-update
+helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/ --force-update
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
 helm repo update
 
 helm upgrade --install cert-manager jetstack/cert-manager \
@@ -104,6 +106,15 @@ helm upgrade --install argocd argo/argo-cd \
 helm upgrade --install argo-rollouts argo/argo-rollouts \
   --version 2.43.12 --namespace argo-rollouts --create-namespace \
   --wait --timeout 10m
+helm upgrade --install headlamp headlamp/headlamp \
+  --version 0.46.0 --namespace headlamp --create-namespace \
+  --set serviceAccount.name=headlamp \
+  --set clusterRoleBinding.clusterRoleName=view \
+  --wait --timeout 10m
+kubectl apply -f platform/headlamp-rbac.yaml
+helm upgrade --install prometheus prometheus-community/prometheus \
+  --version 30.0.1 --namespace monitoring --create-namespace \
+  --values platform/prometheus-values.yaml --wait --timeout 10m
 
 kubectl create namespace kargo --dry-run=client -o yaml | kubectl apply -f -
 password_hash="$(printf '%s' "$KARGO_ADMIN_PASSWORD" | kargo hash-password --password-stdin)"

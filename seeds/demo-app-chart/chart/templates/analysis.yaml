@@ -13,3 +13,13 @@ spec:
         web:
           url: http://demo-app-canary.{{ .Release.Namespace }}.svc.cluster.local/check
           jsonPath: "{$}"
+    - name: canary-gauge
+      initialDelay: 20s
+      count: 3
+      interval: 5s
+      successCondition: len(result) == 1 && result[0] == 1
+      failureLimit: 0
+      provider:
+        prometheus:
+          address: http://prometheus-server.monitoring.svc.cluster.local
+          query: 'demo_check_success{job="{{ .Release.Namespace }}-canary",version="{{ .Values.image.tag }}"}'

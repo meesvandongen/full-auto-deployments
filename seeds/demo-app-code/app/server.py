@@ -42,6 +42,9 @@ def handler(version=VERSION, faulty=FAULT_MODE):
                         "# TYPE demo_requests_total counter",
                         f'demo_requests_total{{status="ok"}} {counts["ok"]}',
                         f'demo_requests_total{{status="error"}} {counts["error"]}',
+                        "# TYPE demo_check_success gauge",
+                        f"demo_check_success{{version={json.dumps(version)}}} "
+                        f"{int(double(21, faulty) == 42)}",
                     ]
                 payload = ("\n".join(lines) + "\n").encode()
                 self.send_response(200)

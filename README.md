@@ -30,7 +30,8 @@ bash scripts/deploy-demo.sh
 
 The script can be rerun. It creates a single-node k3d cluster (`k3d-full-auto`),
 a Docker network, a persistent local Gitea server and OCI registry, a Gitea
-Actions runner, cert-manager, Argo CD, Argo Rollouts, and Kargo. The deploy
+Actions runner, cert-manager, Argo CD, Argo Rollouts, Kargo, Headlamp, and a
+small Prometheus server. The deploy
 script seeds the three Gitea repositories from `seeds/` only if they have no
 `main` branch, then bootstraps the root Argo CD Application and local Git
 credentials. Subsequent runs leave the three Git histories alone. GitHub
@@ -50,6 +51,8 @@ the demo's deployment flow.
 | Kargo | https://localhost:8082 | Port-forward required |
 | Dev app | http://localhost:8083/api/double?value=21 | Port-forward required |
 | Prod app | http://localhost:8084/api/double?value=21 | Port-forward required |
+| Headlamp (cluster resources) | http://localhost:8085 | Port-forward and login token required |
+| Prometheus (metrics/queries) | http://localhost:9090 | Port-forward required |
 
 Run each port-forward you need in a separate terminal (they remain active
 until stopped):
@@ -59,11 +62,23 @@ kubectl -n argocd port-forward svc/argocd-server 8081:443
 kubectl -n kargo port-forward svc/kargo-api 8082:443
 kubectl -n demo-dev port-forward svc/demo-app 8083:80
 kubectl -n demo-prod port-forward svc/demo-app 8084:80
+kubectl -n headlamp port-forward svc/headlamp 8085:80
+kubectl -n monitoring port-forward svc/prometheus-server 9090:80
 ```
 
 The app also serves `/livez`, `/readyz`, `/check`, and `/metrics` on either
 app URL. Argo CD and Kargo use self-signed certificates; accept the local
-browser warnings.
+browser warnings. Headlamp is a web app inside the cluster. Log in with a
+short-lived, read-only service-account token generated locally:
+
+```sh
+kubectl -n headlamp create token headlamp --duration=8h
+```
+
+Paste the token into Headlamp's login screen. The chart's default cluster-admin
+binding is overridden with Kubernetes' `view` role plus read-only access to
+nodes, volumes, and Argo/Kargo resources. It cannot read Secrets or modify
+workloads. Do not expose this service outside localhost.
 
 These addresses are for components running **inside** Docker or Kubernetes,
 not for a browser on your Mac:
@@ -115,12 +130,18 @@ copies the Helm chart from `main`, updates `image.tag` in its values on
 
 The app implements `/api/double?value=21`, `/livez`, `/readyz`, `/check`, and
 `/metrics`. Kubernetes probes use the liveness and readiness endpoints. Argo
-Rollouts calls `/check` through its canary-only Service using a web
-`AnalysisTemplate`: a bad result aborts the rollout before it becomes stable.
+Rollouts calls `/check` through its canary-only Service and queries Prometheus
+for `demo_check_success` from the *new image version*: either failing signal
+aborts the rollout. Missing gauge data also fails the analysis; it does not
+count as success.
 Kargo waits for Argo CD health and independently checks `/api/double` before
 making dev Freight eligible for prod. Requests are logged as JSON to stdout;
-`/metrics` exposes simple Prometheus-format request counters, but no
-Prometheus server is needed for the current web-based checks.
+`/metrics` exposes Prometheus-format request counters and the behavior gauge.
+Prometheus scrapes the dev and prod canary Services every five seconds. The
+gauge is a synthetic functional check, not a production SLO: evaluating real
+error rates or latency would also require representative traffic, a time
+window, and enough samples. CI unit/HTTP tests, Kubernetes readiness, Rollouts
+analysis, and Kargo verification are distinct gates.
 
 To inspect the deployment:
 
