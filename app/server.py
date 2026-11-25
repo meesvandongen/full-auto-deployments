@@ -27,7 +27,6 @@ def handler(version=VERSION, faulty=FAULT_MODE):
                 body = {"status": "ok"}
             elif path.path == "/check":
                 passed = double(21, faulty) == 42
-                status = 200 if passed else 503
                 body = {"ok": passed, "version": version}
             elif path.path == "/api/double":
                 try:

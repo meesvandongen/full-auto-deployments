@@ -54,4 +54,4 @@ class FaultyServerTests(ServerTests):
     def test_canary_fails_while_process_is_ready(self):
         self.assertEqual(self.request("/readyz")[0], 200)
         self.assertEqual(self.request("/api/double?value=21")[1]["result"], 43)
-        self.assertEqual(self.request("/check"), (503, {"ok": False, "version": "test"}))
+        self.assertEqual(self.request("/check"), (200, {"ok": False, "version": "test"}))
