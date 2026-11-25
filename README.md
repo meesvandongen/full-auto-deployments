@@ -53,7 +53,9 @@ The bootstrap does **not** silently commit or push your working tree:
 
 ```sh
 git remote add local http://localhost:3000/demo/full-auto.git
-git push -u local HEAD:main
+set -a; . .local/credentials.env; set +a
+GIT_ASKPASS="$PWD/scripts/git-askpass.sh" GIT_TERMINAL_PROMPT=0 \
+  git -c credential.helper= -c credential.interactive=always push -u local HEAD:main
 bash scripts/deploy-demo.sh
 ```
 
