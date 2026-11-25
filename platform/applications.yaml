@@ -10,7 +10,7 @@ spec:
   source:
     repoURL: http://gitea:3000/demo/full-auto.git
     targetRevision: stage/dev
-    path: .
+    path: chart
   destination:
     server: https://kubernetes.default.svc
     namespace: demo-dev
@@ -33,7 +33,7 @@ spec:
   source:
     repoURL: http://gitea:3000/demo/full-auto.git
     targetRevision: stage/prod
-    path: .
+    path: chart
   destination:
     server: https://kubernetes.default.svc
     namespace: demo-prod

@@ -50,16 +50,16 @@ spec:
     - uses: git-clear
       config:
         path: ./out
-    - uses: kustomize-set-image
+    - uses: copy
       config:
-        path: ./src/gitops/base
-        images:
-          - image: ${{ vars.imageRepo }}
-            tag: ${{ imageFrom(vars.imageRepo).Tag }}
-    - uses: kustomize-build
+        inPath: ./src/chart
+        outPath: ./out/chart
+    - uses: yaml-update
       config:
-        path: ./src/gitops/stages/${{ ctx.stage }}
-        outPath: ./out
+        path: ./out/chart/values.yaml
+        updates:
+          - key: image.tag
+            value: ${{ imageFrom(vars.imageRepo).Tag }}
     - uses: git-commit
       as: commit
       config:

@@ -61,7 +61,9 @@ tests on each push to `main`. If they pass, it publishes an immutable
 `build-<run number>-<commit>` tag to the local registry. Kargo's Warehouse
 discovers that image; auto-promotion updates stage-specific Git branches,
 syncs Argo CD, verifies dev, then promotes the *same* image to prod. Kargo
-commits only to `stage/*`, so it cannot retrigger the build on `main`.
+copies the Helm chart from `main`, updates `image.tag` in its values on
+`stage/*`, and Argo CD renders that chart. It cannot retrigger the build on
+`main`.
 
 The app implements `/api/double?value=21`, `/livez`, `/readyz`, `/check`, and
 `/metrics`. Kubernetes probes use the liveness and readiness endpoints. Argo
@@ -82,12 +84,13 @@ kubectl -n demo-dev port-forward svc/demo-app 8080:80
 curl 'http://localhost:8080/api/double?value=21'
 ```
 
-For a canary-abort demonstration, change the runtime image to set
-`FAULT_MODE=1` in the Dockerfile (after the `test` stage), commit and push to
-local `main`. Tests still run, but `/check` returns an error while `/readyz`
-remains healthy. Rollouts should abort dev and Kargo must not promote that
-image to prod. Restore the setting in a subsequent commit to resume with a
-new image. This is a deliberate demo fault, not a way to skip tests.
+For a canary-abort demonstration, set `faultMode: true` in the chart's
+`values.yaml` and make an application source change in the same commit, then
+push to local `main`. Tests still run, but `/check` returns an error while
+`/readyz` remains healthy. Rollouts should abort dev and Kargo must not
+promote that image to prod. Restore the setting in a subsequent commit to
+resume with a new image. This is a deliberate demo fault, not a way to skip
+tests.
 
 The runner and its jobs have access to the host Docker socket and this setup
 binds an unauthenticated HTTP registry to loopback. Use it only on a trusted

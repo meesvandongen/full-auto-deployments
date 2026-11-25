@@ -1,7 +1,0 @@
-resources:
-  - rollout.yaml
-  - services.yaml
-  - analysis.yaml
-images:
-  - name: registry:5000/demo-app
-    newTag: build-00000000-placeholder

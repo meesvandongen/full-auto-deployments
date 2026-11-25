@@ -2,4 +2,3 @@ runner:
   capacity: 1
 container:
   network: full-auto
-  options: --volume /var/run/docker.sock:/var/run/docker.sock

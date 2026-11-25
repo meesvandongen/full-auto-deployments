@@ -3,7 +3,7 @@ kind: Rollout
 metadata:
   name: demo-app
 spec:
-  replicas: 2
+  replicas: {{ .Values.replicas }}
   revisionHistoryLimit: 2
   selector:
     matchLabels:
@@ -15,7 +15,11 @@ spec:
     spec:
       containers:
         - name: app
-          image: registry:5000/demo-app:build-00000000-placeholder
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: FAULT_MODE
+              value: {{ ternary "1" "0" .Values.faultMode | quote }}
           ports:
             - name: http
               containerPort: 8080
