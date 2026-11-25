@@ -1,0 +1,5 @@
+apiVersion: v2
+name: demo-echo
+version: 0.1.0
+description: Second independent local GitOps canary
+type: application

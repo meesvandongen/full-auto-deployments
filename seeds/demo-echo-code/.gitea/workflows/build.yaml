@@ -1,0 +1,23 @@
+name: build-echo-and-publish
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: docker:27-cli
+    steps:
+      - name: Test, build and publish immutable image
+        env:
+          COMMIT_SHA: ${{ gitea.sha }}
+          RUN_NUMBER: ${{ gitea.run_number }}
+        run: |
+          set -eu
+          git clone http://gitea:3000/demo/demo-echo-code.git /tmp/source
+          cd /tmp/source
+          git checkout "$COMMIT_SHA"
+          tag="$(printf 'echo-%08d-%s' "$RUN_NUMBER" "$(git rev-parse --short=12 HEAD)")"
+          docker build --target test .
+          docker build --build-arg "VERSION=$tag" -t "localhost:5001/demo-echo-code:$tag" .
+          docker push "localhost:5001/demo-echo-code:$tag"

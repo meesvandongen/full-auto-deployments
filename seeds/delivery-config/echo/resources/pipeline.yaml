@@ -1,0 +1,178 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: ProjectConfig
+metadata:
+  name: echo
+  namespace: echo
+spec:
+  promotionPolicies:
+    - stageSelector:
+        name: dev
+      autoPromotionEnabled: true
+    - stageSelector:
+        name: prod
+      autoPromotionEnabled: true
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: echo-app
+  namespace: echo
+spec:
+  subscriptions:
+    - image:
+        repoURL: registry:5443/demo-echo-code
+        imageSelectionStrategy: Lexical
+        insecureSkipTLSVerify: true
+        allowTagsRegexes:
+          - ^echo-[0-9]{8}-[0-9a-f]{12}$
+        discoveryLimit: 5
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: deploy-echo
+  namespace: echo
+spec:
+  vars:
+    - name: gitopsRepo
+      value: https://gitea:3443/demo/demo-echo-chart.git
+    - name: imageRepo
+      value: registry:5443/demo-echo-code
+  steps:
+    - uses: git-clone
+      config:
+        repoURL: ${{ vars.gitopsRepo }}
+        insecureSkipTLSVerify: true
+        checkout:
+          - branch: main
+            path: ./src
+          - branch: stage/${{ ctx.stage }}
+            create: true
+            path: ./out
+    - uses: git-clear
+      config:
+        path: ./out
+    - uses: copy
+      config:
+        inPath: ./src/chart
+        outPath: ./out/chart
+    - uses: yaml-update
+      config:
+        path: ./out/chart/values.yaml
+        updates:
+          - key: image.tag
+            value: ${{ imageFrom(vars.imageRepo).Tag }}
+    - uses: git-commit
+      as: commit
+      config:
+        path: ./out
+        message: Promote echo-app to ${{ ctx.stage }}
+    - uses: git-push
+      config:
+        path: ./out
+    - uses: argocd-update
+      config:
+        apps:
+          - name: echo-${{ ctx.stage }}
+            sources:
+              - repoURL: ${{ vars.gitopsRepo }}
+                desiredRevision: ${{ task.outputs.commit.commit }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: stage-check
+  namespace: echo
+spec:
+  args:
+    - name: url
+    - name: base-url
+  metrics:
+    - name: behavior
+      count: 3
+      interval: 3s
+      successCondition: result == "hello World"
+      failureLimit: 0
+      provider:
+        web:
+          url: "{{ args.url }}"
+          jsonPath: "{$.message}"
+    - name: synthetic-traffic
+      count: 1
+      successCondition: result.exitCode == 0
+      failureCondition: result.exitCode != 0
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: testkube
+                    image: kubeshop/testkube-cli:2.15.3
+                    env:
+                      - name: DO_NOT_TRACK
+                        value: "1"
+                    command: ["/bin/sh", "-c"]
+                    args:
+                      - |
+                        testkube --client direct \
+                          --api-uri http://testkube-api-server.testkube.svc.cluster.local:8088 \
+                          --namespace testkube run testworkflow echo-app-load \
+                          --config "target={{ args.base-url }}" --watch
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: dev
+  namespace: echo
+spec:
+  requestedFreight:
+    - origin:
+        kind: Warehouse
+        name: echo-app
+      sources:
+        direct: true
+  promotionTemplate:
+    spec:
+      steps:
+        - task:
+            name: deploy-echo
+  verification:
+    analysisTemplates:
+      - name: stage-check
+    args:
+      - name: url
+        value: http://echo-app.echo-dev.svc.cluster.local/api/greet?name=World
+      - name: base-url
+        value: http://echo-app.echo-dev.svc.cluster.local
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod
+  namespace: echo
+spec:
+  requestedFreight:
+    - origin:
+        kind: Warehouse
+        name: echo-app
+      sources:
+        stages:
+          - dev
+        autoPromotionOptions:
+          selectionPolicy: MatchUpstream
+  promotionTemplate:
+    spec:
+      steps:
+        - task:
+            name: deploy-echo
+  verification:
+    analysisTemplates:
+      - name: stage-check
+    args:
+      - name: url
+        value: http://echo-app.echo-prod.svc.cluster.local/api/greet?name=World
+      - name: base-url
+        value: http://echo-app.echo-prod.svc.cluster.local

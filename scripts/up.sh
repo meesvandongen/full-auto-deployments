@@ -69,7 +69,7 @@ fi
 curl --silent --fail --user "demo:$GITEA_ADMIN_PASSWORD" \
   http://localhost:3000/api/v1/user >/dev/null
 
-for repo in demo-app-code demo-app-chart app-of-apps; do
+for repo in demo-app-code demo-app-chart demo-echo-code demo-echo-chart app-of-apps delivery-config; do
   status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
     --user "demo:$GITEA_ADMIN_PASSWORD" "http://localhost:3000/api/v1/repos/demo/$repo")"
   if [[ "$status" == 404 ]]; then
@@ -85,9 +85,17 @@ done
 compose up -d runner
 
 if ! k3d cluster list --no-headers | awk '{print $1}' | grep -qx full-auto; then
-  k3d cluster create full-auto --network full-auto --registry-config registries.yaml
+  k3d cluster create full-auto --network full-auto --registry-config registries.yaml \
+    --port '127.0.0.1:8443:443@loadbalancer'
 else
   k3d cluster start full-auto
+fi
+ingress_port="$(docker port k3d-full-auto-serverlb 443/tcp 2>/dev/null || true)"
+if [[ -z "$ingress_port" ]]; then
+  k3d node edit k3d-full-auto-serverlb --port-add '127.0.0.1:8443:443'
+elif [[ "$ingress_port" != '127.0.0.1:8443' ]]; then
+  echo "Unexpected k3d ingress port mapping: $ingress_port" >&2
+  exit 1
 fi
 kubectl config use-context k3d-full-auto >/dev/null
 
@@ -133,7 +141,7 @@ helm upgrade --install kargo oci://ghcr.io/akuity/kargo-charts/kargo \
   --version 1.12.7 --namespace kargo --set api.secret.name=kargo-admin \
   --wait --timeout 10m
 
-for repo in demo-app-chart app-of-apps; do
+for repo in demo-app-chart demo-echo-chart app-of-apps delivery-config; do
   kubectl -n argocd create secret generic "local-$repo" \
     --from-literal=type=git \
     --from-literal=url="https://gitea:3443/demo/$repo.git" \
@@ -144,5 +152,10 @@ for repo in demo-app-chart app-of-apps; do
     kubectl label --local -f - argocd.argoproj.io/secret-type=repository -o yaml |
     kubectl apply -f -
 done
+
+for namespace in demo-dev demo-prod echo-dev echo-prod; do
+  kubectl create namespace "$namespace" --dry-run=client -o yaml | kubectl apply -f -
+done
+kubectl apply -f platform/ingress.yaml
 
 echo "Infrastructure is ready. See README.md for access and the next steps."

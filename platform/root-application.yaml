@@ -8,9 +8,7 @@ spec:
   source:
     repoURL: https://gitea:3443/demo/app-of-apps.git
     targetRevision: main
-    path: .
-    directory:
-      recurse: true
+    path: apps
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

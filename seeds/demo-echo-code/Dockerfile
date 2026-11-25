@@ -1,0 +1,13 @@
+FROM python:3.13-alpine AS test
+WORKDIR /app
+COPY app/ .
+RUN python -m unittest discover -s tests -v
+
+FROM python:3.13-alpine
+WORKDIR /app
+COPY app/server.py .
+ARG VERSION=local
+ENV APP_VERSION=$VERSION
+USER 10001
+EXPOSE 8080
+CMD ["python", "-u", "server.py"]

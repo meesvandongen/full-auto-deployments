@@ -1,0 +1,7 @@
+image:
+  repository: registry:5000/demo-echo-code
+  tag: echo-00000000-placeholder
+  pullPolicy: IfNotPresent
+
+replicas: 2
+faultMode: false

@@ -1,0 +1,49 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: echo-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    kargo.akuity.io/authorized-stage: echo:dev
+spec:
+  project: default
+  source:
+    repoURL: https://gitea:3443/demo/demo-echo-chart.git
+    targetRevision: stage/dev
+    path: chart
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: echo-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: echo-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  annotations:
+    kargo.akuity.io/authorized-stage: echo:prod
+spec:
+  project: default
+  source:
+    repoURL: https://gitea:3443/demo/demo-echo-chart.git
+    targetRevision: stage/prod
+    path: chart
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: echo-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

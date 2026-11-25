@@ -1,0 +1,139 @@
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: local-selfsigned
+  namespace: argocd
+spec:
+  insecureSkipVerify: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: argocd-ui
+  namespace: argocd
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`argocd.localhost`)
+      kind: Rule
+      services:
+        - name: argocd-server
+          port: 443
+          scheme: https
+          serversTransport: local-selfsigned
+  tls: {}
+---
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: local-selfsigned
+  namespace: kargo
+spec:
+  insecureSkipVerify: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: kargo-ui
+  namespace: kargo
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`kargo.localhost`)
+      kind: Rule
+      services:
+        - name: kargo-api
+          port: 443
+          scheme: https
+          serversTransport: local-selfsigned
+  tls: {}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: headlamp-ui
+  namespace: headlamp
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`headlamp.localhost`)
+      kind: Rule
+      services:
+        - name: headlamp
+          port: 80
+  tls: {}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: prometheus-ui
+  namespace: monitoring
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`prometheus.localhost`)
+      kind: Rule
+      services:
+        - name: prometheus-server
+          port: 80
+  tls: {}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: demo-app-ui
+  namespace: demo-dev
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`dev.localhost`)
+      kind: Rule
+      services:
+        - name: demo-app
+          port: 80
+  tls: {}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: demo-app-ui
+  namespace: demo-prod
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`prod.localhost`)
+      kind: Rule
+      services:
+        - name: demo-app
+          port: 80
+  tls: {}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: echo-app-ui
+  namespace: echo-dev
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`echo-dev.localhost`)
+      kind: Rule
+      services:
+        - name: echo-app
+          port: 80
+  tls: {}
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: echo-app-ui
+  namespace: echo-prod
+spec:
+  entryPoints: [websecure]
+  routes:
+    - match: Host(`echo-prod.localhost`)
+      kind: Rule
+      services:
+        - name: echo-app
+          port: 80
+  tls: {}

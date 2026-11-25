@@ -23,3 +23,11 @@ extraScrapeConfigs: |
     static_configs:
       - targets:
           - demo-app-canary.demo-prod.svc.cluster.local:80
+  - job_name: echo-dev-canary
+    static_configs:
+      - targets:
+          - echo-app-canary.echo-dev.svc.cluster.local:80
+  - job_name: echo-prod-canary
+    static_configs:
+      - targets:
+          - echo-app-canary.echo-prod.svc.cluster.local:80
