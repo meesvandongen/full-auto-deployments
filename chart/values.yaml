@@ -4,4 +4,4 @@ image:
   pullPolicy: IfNotPresent
 
 replicas: 2
-faultMode: false
+faultMode: true
