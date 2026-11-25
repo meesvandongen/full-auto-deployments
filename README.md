@@ -86,8 +86,8 @@ curl 'http://localhost:8080/api/double?value=21'
 ```
 
 For a canary-abort demonstration, set `faultMode: true` in the chart's
-`values.yaml` and make an application source change in the same commit, then
-push to local `main`. Tests still run, but `/check` returns an error while
+`values.yaml`, commit, and push to local `main`. Tests still run, but `/check`
+returns an error while
 `/readyz` remains healthy. Rollouts should abort dev and Kargo must not
 promote that image to prod. Restore the setting in a subsequent commit to
 resume with a new image. This is a deliberate demo fault, not a way to skip

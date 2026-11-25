@@ -38,6 +38,14 @@ class HealthyServerTests(ServerTests):
         self.assertEqual(self.request("/check"), (200, {"ok": True, "version": "test"}))
         self.assertEqual(self.request("/api/double?value=no")[0], 400)
 
+    def test_metrics_reflect_requests(self):
+        self.request("/check")
+        self.request("/api/double?value=no")
+        with urlopen(f"http://127.0.0.1:{self.server.server_port}/metrics") as response:
+            metrics = response.read().decode()
+        self.assertIn('demo_requests_total{status="ok"} 1\n', metrics)
+        self.assertIn('demo_requests_total{status="error"} 1\n', metrics)
+
 
 class FaultyServerTests(ServerTests):
     def faulty(self):
