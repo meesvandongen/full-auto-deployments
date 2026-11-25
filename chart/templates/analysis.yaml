@@ -11,5 +11,5 @@ spec:
       failureLimit: 0
       provider:
         web:
-          url: http://demo-app-canary/check
+          url: http://demo-app-canary.{{ .Release.Namespace }}.svc.cluster.local/check
           jsonPath: "{$}"
