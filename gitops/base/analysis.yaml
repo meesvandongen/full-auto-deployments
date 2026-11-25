@@ -1,0 +1,15 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: demo-app-check
+spec:
+  metrics:
+    - name: behavior
+      count: 3
+      interval: 3s
+      successCondition: result.ok == true
+      failureLimit: 0
+      provider:
+        web:
+          url: http://demo-app-canary/check
+          jsonPath: "{$}"

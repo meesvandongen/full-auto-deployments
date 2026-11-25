@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-dev
+  namespace: argocd
+  annotations:
+    kargo.akuity.io/authorized-stage: demo:dev
+spec:
+  project: default
+  source:
+    repoURL: http://gitea:3000/demo/full-auto.git
+    targetRevision: stage/dev
+    path: .
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo-dev
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: demo-prod
+  namespace: argocd
+  annotations:
+    kargo.akuity.io/authorized-stage: demo:prod
+spec:
+  project: default
+  source:
+    repoURL: http://gitea:3000/demo/full-auto.git
+    targetRevision: stage/prod
+    path: .
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: demo-prod
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

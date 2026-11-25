@@ -1,0 +1,147 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: ProjectConfig
+metadata:
+  name: demo
+  namespace: demo
+spec:
+  promotionPolicies:
+    - stageSelector:
+        name: dev
+      autoPromotionEnabled: true
+    - stageSelector:
+        name: prod
+      autoPromotionEnabled: true
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: demo-app
+  namespace: demo
+spec:
+  subscriptions:
+    - image:
+        repoURL: registry:5000/demo-app
+        imageSelectionStrategy: Lexical
+        allowTagsRegexes:
+          - ^build-[0-9]{8}-[0-9a-f]{12}$
+        discoveryLimit: 5
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: PromotionTask
+metadata:
+  name: deploy-app
+  namespace: demo
+spec:
+  vars:
+    - name: gitopsRepo
+      value: http://gitea:3000/demo/full-auto.git
+    - name: imageRepo
+      value: registry:5000/demo-app
+  steps:
+    - uses: git-clone
+      config:
+        repoURL: ${{ vars.gitopsRepo }}
+        checkout:
+          - branch: main
+            path: ./src
+          - branch: stage/${{ ctx.stage }}
+            create: true
+            path: ./out
+    - uses: git-clear
+      config:
+        path: ./out
+    - uses: kustomize-set-image
+      config:
+        path: ./src/gitops/base
+        images:
+          - image: ${{ vars.imageRepo }}
+            tag: ${{ imageFrom(vars.imageRepo).Tag }}
+    - uses: kustomize-build
+      config:
+        path: ./src/gitops/stages/${{ ctx.stage }}
+        outPath: ./out
+    - uses: git-commit
+      as: commit
+      config:
+        path: ./out
+        message: Promote demo-app to ${{ ctx.stage }}
+    - uses: git-push
+      config:
+        path: ./out
+    - uses: argocd-update
+      config:
+        apps:
+          - name: demo-${{ ctx.stage }}
+            sources:
+              - repoURL: ${{ vars.gitopsRepo }}
+                desiredRevision: ${{ task.outputs.commit.commit }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: stage-check
+  namespace: demo
+spec:
+  args:
+    - name: url
+  metrics:
+    - name: behavior
+      count: 3
+      interval: 3s
+      successCondition: result == 42
+      failureLimit: 0
+      provider:
+        web:
+          url: "{{ args.url }}"
+          jsonPath: "{$.result}"
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: dev
+  namespace: demo
+spec:
+  requestedFreight:
+    - origin:
+        kind: Warehouse
+        name: demo-app
+      sources:
+        direct: true
+  promotionTemplate:
+    spec:
+      steps:
+        - task:
+            name: deploy-app
+  verification:
+    analysisTemplates:
+      - name: stage-check
+    args:
+      - name: url
+        value: http://demo-app.demo-dev.svc.cluster.local/api/double?value=21
+---
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod
+  namespace: demo
+spec:
+  requestedFreight:
+    - origin:
+        kind: Warehouse
+        name: demo-app
+      sources:
+        stages:
+          - dev
+        autoPromotionOptions:
+          selectionPolicy: MatchUpstream
+  promotionTemplate:
+    spec:
+      steps:
+        - task:
+            name: deploy-app
+  verification:
+    analysisTemplates:
+      - name: stage-check
+    args:
+      - name: url
+        value: http://demo-app.demo-prod.svc.cluster.local/api/double?value=21

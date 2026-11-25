@@ -1,0 +1,20 @@
+name: build-and-publish
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: docker:27-cli
+    steps:
+      - name: Test, build and publish immutable image
+        run: |
+          set -eu
+          git clone http://gitea:3000/demo/full-auto.git /tmp/source
+          cd /tmp/source
+          git checkout "$GITEA_SHA"
+          tag="$(printf 'build-%08d-%s' "$GITEA_RUN_NUMBER" "$(git rev-parse --short=12 HEAD)")"
+          docker build --target test .
+          docker build --build-arg "VERSION=$tag" -t "localhost:5001/demo-app:$tag" .
+          docker push "localhost:5001/demo-app:$tag"

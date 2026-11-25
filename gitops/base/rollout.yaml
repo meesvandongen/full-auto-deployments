@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: demo-app
+spec:
+  replicas: 2
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: demo-app
+  template:
+    metadata:
+      labels:
+        app: demo-app
+    spec:
+      containers:
+        - name: app
+          image: registry:5000/demo-app:build-00000000-placeholder
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 2
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+  strategy:
+    canary:
+      maxSurge: 1
+      maxUnavailable: 0
+      stableService: demo-app-stable
+      canaryService: demo-app-canary
+      steps:
+        - setWeight: 50
+        - pause:
+            duration: 10s
+        - analysis:
+            templates:
+              - templateName: demo-app-check
