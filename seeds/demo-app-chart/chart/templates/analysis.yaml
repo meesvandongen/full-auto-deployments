@@ -2,6 +2,8 @@ apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
 metadata:
   name: demo-app-check
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   metrics:
     - name: behavior
@@ -47,4 +49,5 @@ spec:
                           --api-uri http://testkube-api-server.testkube.svc.cluster.local:8088 \
                           --namespace testkube run testworkflow demo-app-load \
                           --config target=http://demo-app-canary.{{ .Release.Namespace }}.svc.cluster.local \
+                          --config revision={{ .Values.tests.revision }} \
                           --watch

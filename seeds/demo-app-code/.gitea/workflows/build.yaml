@@ -13,11 +13,31 @@ jobs:
           COMMIT_SHA: ${{ gitea.sha }}
           RUN_NUMBER: ${{ gitea.run_number }}
         run: |
-          set -eu
+          set -euo pipefail
           git clone http://gitea:3000/demo/demo-app-code.git /tmp/source
           cd /tmp/source
           git checkout "$COMMIT_SHA"
-          tag="$(printf 'app-%08d-%s' "$RUN_NUMBER" "$(git rev-parse --short=12 HEAD)")"
+          tag="$(printf 'app-%08d-%s' "$RUN_NUMBER" "$COMMIT_SHA")"
+          image="localhost:5001/demo-app-code:$tag"
           docker build --target test .
-          docker build --build-arg "VERSION=$tag" -t "localhost:5001/demo-app-code:$tag" .
-          docker push "localhost:5001/demo-app-code:$tag"
+          docker build --target k6-test -t "local/k6-test:$tag" .
+          docker build --build-arg "VERSION=$tag" -t "$image" .
+          container="$(docker run -d --rm --name "ci-$tag" --network full-auto "$image")"
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          ready=false
+          for attempt in $(seq 1 30); do
+            if docker exec "$container" python -c 'from urllib.request import urlopen; urlopen("http://127.0.0.1:8080/readyz")' >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != true ]; then
+            echo "Application did not become ready" >&2
+            exit 1
+          fi
+          docker exec "$container" python -c 'from urllib.request import urlopen; print(urlopen("http://127.0.0.1:8080/metrics").read().decode(), end="")' |
+            docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.16.0 check metrics
+          docker run --rm --network full-auto --entrypoint k6 \
+            -e "TARGET_URL=http://ci-$tag:8080" "local/k6-test:$tag" run load.js
+          docker push "$image"

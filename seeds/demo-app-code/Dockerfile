@@ -3,6 +3,10 @@ WORKDIR /app
 COPY app/ .
 RUN python -m unittest discover -s tests -v
 
+FROM grafana/k6:0.49.0 AS k6-test
+WORKDIR /data
+COPY tests/load.js .
+
 FROM python:3.13-alpine
 WORKDIR /app
 COPY app/server.py .

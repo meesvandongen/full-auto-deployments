@@ -6,12 +6,12 @@ Gitea**. The bootstrap creates six independent local Git repositories:
 
 | Repository | Owner of desired state |
 | --- | --- |
-| `demo/demo-app-code` | Python application, Dockerfile, and Gitea Actions CI |
+| `demo/demo-app-code` | Python application, unit/k6 tests, Dockerfile, and Gitea Actions CI |
 | `demo/demo-app-chart` | Helm chart; Kargo writes `stage/dev` and `stage/prod` branches |
-| `demo/demo-echo-code` | Independent greeting application, Dockerfile, and CI |
+| `demo/demo-echo-code` | Independent greeting application, unit/k6 tests, Dockerfile, and CI |
 | `demo/demo-echo-chart` | Independent Helm chart and stage branches |
 | `demo/app-of-apps` | Only Argo CD child Application definitions |
-| `demo/delivery-config` | Per-app Kargo pipelines and Testkube load workflows |
+| `demo/delivery-config` | Per-app Kargo pipelines and Testkube workflow runners |
 
 Gitea Actions tests code and publishes an image; Kargo promotes the image by
 updating the chart repository; Argo CD reconciles the app-of-apps and chart
@@ -42,60 +42,99 @@ and local Git credentials. Subsequent runs leave the Git histories alone. GitHub
 hosts the infrastructure repository; no hosted Git service is needed during
 the demo's deployment flow.
 
-## URLs
-
-| Service | URL from your Mac | Access |
-| --- | --- | --- |
-| Gitea | http://localhost:3000 | Available after `scripts/up.sh` |
-| Double app code and CI | http://localhost:3000/demo/demo-app-code and http://localhost:3000/demo/demo-app-code/actions | Available after `scripts/deploy-demo.sh` |
-| Double app Helm chart | http://localhost:3000/demo/demo-app-chart | Available after `scripts/deploy-demo.sh` |
-| Echo app code and CI | http://localhost:3000/demo/demo-echo-code and http://localhost:3000/demo/demo-echo-code/actions | Available after `scripts/deploy-demo.sh` |
-| Echo app Helm chart | http://localhost:3000/demo/demo-echo-chart | Available after `scripts/deploy-demo.sh` |
-| App-of-apps repository | http://localhost:3000/demo/app-of-apps | Available after `scripts/deploy-demo.sh` |
-| Delivery configuration repository | http://localhost:3000/demo/delivery-config | Available after `scripts/deploy-demo.sh` |
-| Image registry tags | http://localhost:5001/v2/_catalog | Available after successful CI builds |
-| Argo CD | https://argocd.localhost:8443 | In-cluster Traefik ingress |
-| Kargo | https://kargo.localhost:8443 | In-cluster Traefik ingress |
-| Double dev / prod | https://dev.localhost:8443/api/double?value=21 and https://prod.localhost:8443/api/double?value=21 | In-cluster Traefik ingress |
-| Echo dev / prod | https://echo-dev.localhost:8443/api/greet?name=World and https://echo-prod.localhost:8443/api/greet?name=World | In-cluster Traefik ingress |
-| Headlamp (cluster resources) | https://headlamp.localhost:8443 | Login token required |
-| Prometheus (metrics/queries) | https://prometheus.localhost:8443 | In-cluster Traefik ingress |
+## Endpoints and credentials
 
 `*.localhost` resolves to your computer's loopback address without a DNS
-server. k3d maps only `127.0.0.1:8443` into Traefik, which routes by hostname;
-include both `https://` and `:8443` in the browser. Traefik uses a local
-self-signed certificate, so accept the browser warning. The app also serves
-`/livez`, `/readyz`, `/check`, and `/metrics` on either app hostname.
+server. k3d exposes only `127.0.0.1:8443` to Traefik; include **both**
+`https://` and `:8443` in browser URLs. Accept the local self-signed
+certificate warning. Gitea and the registry use separate loopback ports.
 
-Headlamp is a web app inside the cluster. Log in with a short-lived,
-read-only service-account token generated locally:
+### Browser interfaces
+
+| Interface | URL | Login |
+| --- | --- | --- |
+| Gitea | http://localhost:3000 | Public repositories are readable anonymously; administration uses `demo` / `GITEA_ADMIN_PASSWORD` |
+| Argo CD (sync, health, rollouts) | https://argocd.localhost:8443 | `admin` / initial admin password from the Kubernetes Secret below |
+| Kargo (Freight, Stages, promotions) | https://kargo.localhost:8443 | `admin` / `KARGO_ADMIN_PASSWORD` |
+| Headlamp (cluster resources) | https://headlamp.localhost:8443 | Short-lived read-only Kubernetes token below |
+| Prometheus (queries and targets) | https://prometheus.localhost:8443 | No login; loopback-only ingress |
+
+Headlamp can view nodes, volumes, and Argo/Kargo resources but cannot read
+Secrets or modify workloads. Standalone Testkube has **no local web UI**;
+use its CLI with the `k3d-full-auto` kubeconfig context to inspect executions.
+
+### Application HTTP endpoints
+
+| Application | Dev | Prod | Login |
+| --- | --- | --- | --- |
+| Double | https://dev.localhost:8443/api/double?value=21 | https://prod.localhost:8443/api/double?value=21 | None |
+| Echo | https://echo-dev.localhost:8443/api/greet?name=World | https://echo-prod.localhost:8443/api/greet?name=World | None |
+
+Each app also exposes `/livez` (liveness), `/readyz` (readiness), `/check`
+(behavioral verification), and `/metrics` (Prometheus text format) at the
+corresponding hostname, for example
+`https://dev.localhost:8443/metrics`. The canary-only Services are internal;
+Rollouts and Testkube use them to inspect the new version before promotion.
+
+### Local Git repositories and image registry
+
+All six repositories are available after `scripts/deploy-demo.sh`. Cloning
+these public repositories requires no credentials; **pushing** requires
+`demo` / `GITEA_ADMIN_PASSWORD` (the push example below uses the local
+askpass script). The seed files in this infrastructure repo are not Git
+remotes.
+
+| Repository | Browser | Git clone URL from your Mac |
+| --- | --- | --- |
+| Double code and CI | http://localhost:3000/demo/demo-app-code/actions | `http://localhost:3000/demo/demo-app-code.git` |
+| Double Helm chart | http://localhost:3000/demo/demo-app-chart | `http://localhost:3000/demo/demo-app-chart.git` |
+| Echo code and CI | http://localhost:3000/demo/demo-echo-code/actions | `http://localhost:3000/demo/demo-echo-code.git` |
+| Echo Helm chart | http://localhost:3000/demo/demo-echo-chart | `http://localhost:3000/demo/demo-echo-chart.git` |
+| App-of-apps | http://localhost:3000/demo/app-of-apps | `http://localhost:3000/demo/app-of-apps.git` |
+| Delivery configuration | http://localhost:3000/demo/delivery-config | `http://localhost:3000/demo/delivery-config.git` |
+
+The local OCI registry needs **no authentication**: browse
+http://localhost:5001/v2/_catalog and the tag lists at
+http://localhost:5001/v2/demo-app-code/tags/list and
+http://localhost:5001/v2/demo-echo-code/tags/list. CI pushes images through
+`localhost:5001`; cluster nodes pull from `registry:5000`.
+
+### Retrieve login credentials locally
+
+From this repository root, after `scripts/up.sh`:
 
 ```sh
+. .local/credentials.env
+printf 'Gitea user: demo, password: %s\n' "$GITEA_ADMIN_PASSWORD"
+printf 'Kargo user: admin, password: %s\n' "$KARGO_ADMIN_PASSWORD"
+printf 'Argo CD user: admin, password: '
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d; echo
 kubectl -n headlamp create token headlamp --duration=8h
 ```
 
-Paste the token into Headlamp's login screen. The chart's default cluster-admin
-binding is overridden with Kubernetes' `view` role plus read-only access to
-nodes, volumes, and Argo/Kargo resources. It cannot read Secrets or modify
-workloads. Do not expose this service outside localhost.
+Paste the last command's token into Headlamp. It expires after eight hours;
+run the command again when needed. The Gitea Actions runner registration
+token and Kargo signing key are generated in `.local/credentials.env` but
+are **not user logins**. Argo CD and Kargo Git credentials are provisioned
+automatically as Kubernetes Secrets. Do not commit `.local/credentials.env`
+or paste any of its values into Git.
 
-These addresses are for components running **inside** Docker or Kubernetes,
-not for a browser on your Mac:
+### Internal-only service addresses
 
-| Component | Internal address |
-| --- | --- |
-| Double chart Git repository | `https://gitea:3443/demo/demo-app-chart.git` |
-| Echo chart Git repository | `https://gitea:3443/demo/demo-echo-chart.git` |
-| App-of-apps Git repository | `https://gitea:3443/demo/app-of-apps.git` |
-| Delivery configuration Git repository | `https://gitea:3443/demo/delivery-config.git` |
-| Registry used for image pulls | `registry:5000` |
-| Registry used by Kargo for image discovery | `registry:5443` |
+These are reachable from containers or pods, **not** from your Mac's browser:
 
-Generated passwords and the runner token are kept in `.local/credentials.env`
-(ignored by Git). The Gitea and Kargo administrator username is `demo` and
-`admin`, respectively. Retrieve the Argo CD initial password with
-`kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`.
-The other passwords are in `.local/credentials.env`; do not commit that file.
+| Purpose | Internal endpoint | Credentials |
+| --- | --- | --- |
+| Gitea code clones in CI | `http://gitea:3000/demo/<code-repo>.git` | None for public read |
+| Gitea charts, app-of-apps, delivery config for Argo CD/Kargo | `https://gitea:3443/demo/<repo>.git` | Auto-provisioned Gitea credentials; self-signed TLS |
+| Image pulls | `registry:5000/<image>@sha256:<digest>` | None; HTTP registry mirror |
+| Kargo image discovery | `https://registry:5443/<image>` | None; self-signed TLS |
+| Argo CD API | `https://argocd-server.argocd.svc.cluster.local:443` | Argo CD authentication |
+| Kargo API | `https://kargo-api.kargo.svc.cluster.local:443` | Kargo authentication |
+| Prometheus API | `http://prometheus-server.monitoring.svc.cluster.local:80` | None; cluster-internal |
+| Testkube standalone API | `http://testkube-api-server.testkube.svc.cluster.local:8088` | None; cluster-internal |
+| Headlamp service | `http://headlamp.headlamp.svc.cluster.local:80` | Kubernetes token |
 
 To check in an application change, clone the **code** repository once. Edit
 and commit there; pushing `main` triggers the pipeline. From this infrastructure
@@ -118,9 +157,11 @@ verification, and CI runs are independent of the double app.
 
 Push infrastructure changes to GitHub with `git push origin main` from this
 directory; that does not trigger a demo deployment. Edit each Helm chart,
-app-of-apps, or delivery configuration in its own Gitea clone if needed. Chart
-`main` changes are copied to stage branches with the **next image promotion**;
-app-of-apps and delivery-config `main` are auto-synced by Argo CD.
+app-of-apps, or delivery configuration in its own Gitea clone if needed. A
+chart `main` change creates Freight with the current image once CI has
+published an image matching the latest code commit. It traverses the same
+dev-to-prod gates as a code change.
+App-of-apps and delivery-config `main` are auto-synced by Argo CD.
 The app-of-apps root manages only child Applications. Auto-prune is enabled for
 the root, delivery resources, and application workloads; child Application
 finalizers ensure removals clean up their resources. Kargo Projects are
@@ -129,14 +170,38 @@ deleting a Project also deletes its namespace and promotion history.
 The `seeds/` copies are templates for **initial bootstrap**, not working
 clones or additional Git remotes for this checkout.
 
-Each code repo's Gitea workflow runs containerized unit and HTTP tests on
-pushes to `main`. If they pass, it publishes an immutable image tag to the
-local registry. Each app's Kargo Warehouse discovers its image; auto-promotion
-updates stage-specific Git branches,
-syncs Argo CD, verifies dev, then promotes the *same* image to prod. Kargo
-copies the Helm chart from `main`, updates `image.tag` in its values on
-`stage/*`, and Argo CD renders that chart. It cannot retrigger the build on
-`main`.
+Each code repo's Gitea workflow runs unit tests, validates the running app's
+Prometheus exposition with `promtool`, and runs its colocated k6 script against
+the candidate image. Only then does it publish an image tagged with the CI run
+number and full code commit SHA. Kargo's Warehouse discovers a matching image
+and code commit together with a chart Git commit, creating one immutable
+Freight tuple. A pending or failed CI build cannot pair an old image with new
+code. Each PromotionTask checks out the **chart commit from that Freight**
+(not mutable `main`) and writes its image digest, tag, and code/test commit
+into the stage branch. Dev and prod promote the same Freight; Argo CD renders
+the chart and Rollouts pulls the image by digest. Promotions never push to
+code `main`, so they cannot retrigger CI.
+
+The Testkube workflow definition is generic delivery configuration. Its k6
+script lives in the code repository and is fetched at the commit pinned in
+Freight. Argo CD applies the chart's AnalysisTemplate in an earlier sync wave
+than the Rollout, so a new AnalysisRun uses the corresponding template.
+
+### Release identity
+
+The automatically generated image tag (`app-<run>-<full-code-SHA>` or
+`echo-<run>-<full-code-SHA>`) is useful for tracing CI. The **digest** is the
+deployment identity; the code and chart commit SHAs pin the test and
+configuration. Semantic versioning is optional for human-facing releases or
+compatibility policies, not needed to make this GitOps promotion reproducible.
+
+### Stage rollback gap
+
+On a failed canary, Rollouts aborts the update and keeps serving the stable
+ReplicaSet; Kargo blocks that Freight from moving downstream. Neither
+automatically reverts the Stage's Git branch to the last good revision in this
+open-source setup. Recover the Git desired state by promoting a known-good
+Freight, reverting the chart branch, or publishing a fix.
 
 Both apps implement `/livez`, `/readyz`, `/check`, and `/metrics`; their business
 endpoints are `/api/double?value=21` and `/api/greet?name=World`.
@@ -164,10 +229,18 @@ without uploading logs to a hosted viewer:
 
 ```sh
 testkube set context --kubeconfig --namespace testkube
+demo_freight=$(kubectl -n demo get stage dev -o jsonpath='{.status.freightSummary}')
+demo_sha=$(kubectl -n demo get freight "$demo_freight" \
+  -o jsonpath='{.commits[?(@.repoURL=="https://gitea:3443/demo/demo-app-code.git")].id}')
 testkube run testworkflow demo-app-load \
-  --config target=http://demo-app.demo-dev.svc.cluster.local --watch
+  --config target=http://demo-app.demo-dev.svc.cluster.local \
+  --config "revision=$demo_sha" --watch
+echo_freight=$(kubectl -n echo get stage dev -o jsonpath='{.status.freightSummary}')
+echo_sha=$(kubectl -n echo get freight "$echo_freight" \
+  -o jsonpath='{.commits[?(@.repoURL=="https://gitea:3443/demo/demo-echo-code.git")].id}')
 testkube run testworkflow echo-app-load \
-  --config target=http://echo-app.echo-dev.svc.cluster.local --watch
+  --config target=http://echo-app.echo-dev.svc.cluster.local \
+  --config "revision=$echo_sha" --watch
 ```
 
 To inspect the deployment:
@@ -183,12 +256,13 @@ curl -k 'https://echo-dev.localhost:8443/api/greet?name=World'
 
 For a canary-abort demonstration, set `faultMode: true` in a clone of the
 chart repository's `chart/values.yaml`, commit and push the chart `main`
-branch, then push a code change to trigger a new image. Tests still run,
-but `/check` reports a failed check while
+branch. This creates a new Freight using the existing image and a new chart
+commit; no code change is needed. CI already tested that image, but
+`/check` reports a failed check while
 `/readyz` remains healthy. Rollouts should abort dev and Kargo must not
-promote that image to prod. Restore the chart setting and push another code
-change to resume with a new image. This is a deliberate demo fault, not a way
-to skip tests.
+promote that Freight to prod. Restore the chart setting in a subsequent
+chart commit to resume with the same tested image. This is a deliberate demo
+fault, not a way to skip tests.
 
 The runner and its jobs have access to the host Docker socket and this setup
 binds an unauthenticated HTTP registry to loopback. Kargo's internal HTTPS

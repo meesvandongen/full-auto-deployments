@@ -24,8 +24,19 @@ spec:
         imageSelectionStrategy: Lexical
         insecureSkipTLSVerify: true
         allowTagsRegexes:
-          - ^echo-[0-9]{8}-[0-9a-f]{12}$
+          - ^echo-[0-9]{8}-[0-9a-f]{40}$
         discoveryLimit: 5
+    - git:
+        repoURL: https://gitea:3443/demo/demo-echo-chart.git
+        branch: main
+        insecureSkipTLSVerify: true
+    - git:
+        repoURL: https://gitea:3443/demo/demo-echo-code.git
+        branch: main
+        insecureSkipTLSVerify: true
+  freightCreationCriteria:
+    expression: |
+      hasSuffix(imageFrom('registry:5443/demo-echo-code').Tag, commitFrom('https://gitea:3443/demo/demo-echo-code.git').ID)
 ---
 apiVersion: kargo.akuity.io/v1alpha1
 kind: PromotionTask
@@ -38,13 +49,15 @@ spec:
       value: https://gitea:3443/demo/demo-echo-chart.git
     - name: imageRepo
       value: registry:5443/demo-echo-code
+    - name: codeRepo
+      value: https://gitea:3443/demo/demo-echo-code.git
   steps:
     - uses: git-clone
       config:
         repoURL: ${{ vars.gitopsRepo }}
         insecureSkipTLSVerify: true
         checkout:
-          - branch: main
+          - commit: ${{ commitFrom(vars.gitopsRepo).ID }}
             path: ./src
           - branch: stage/${{ ctx.stage }}
             create: true
@@ -62,6 +75,10 @@ spec:
         updates:
           - key: image.tag
             value: ${{ imageFrom(vars.imageRepo).Tag }}
+          - key: image.digest
+            value: ${{ imageFrom(vars.imageRepo).Digest }}
+          - key: tests.revision
+            value: ${{ commitFrom(vars.codeRepo).ID }}
     - uses: git-commit
       as: commit
       config:
@@ -87,6 +104,7 @@ spec:
   args:
     - name: url
     - name: base-url
+    - name: revision
   metrics:
     - name: behavior
       count: 3
@@ -120,7 +138,8 @@ spec:
                         testkube --client direct \
                           --api-uri http://testkube-api-server.testkube.svc.cluster.local:8088 \
                           --namespace testkube run testworkflow echo-app-load \
-                          --config "target={{ args.base-url }}" --watch
+                          --config "target={{ args.base-url }}" \
+                          --config "revision={{ args.revision }}" --watch
 ---
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
@@ -147,6 +166,8 @@ spec:
         value: http://echo-app.echo-dev.svc.cluster.local/api/greet?name=World
       - name: base-url
         value: http://echo-app.echo-dev.svc.cluster.local
+      - name: revision
+        value: ${{ commitFrom("https://gitea:3443/demo/demo-echo-code.git").ID }}
 ---
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
@@ -176,3 +197,5 @@ spec:
         value: http://echo-app.echo-prod.svc.cluster.local/api/greet?name=World
       - name: base-url
         value: http://echo-app.echo-prod.svc.cluster.local
+      - name: revision
+        value: ${{ commitFrom("https://gitea:3443/demo/demo-echo-code.git").ID }}

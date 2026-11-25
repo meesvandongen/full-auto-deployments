@@ -7,32 +7,16 @@ spec:
   config:
     target:
       type: string
+    revision:
+      type: string
   content:
-    files:
-      - path: /data/load.js
-        content: |
-          import http from 'k6/http';
-          import { check, sleep } from 'k6';
-
-          export const options = {
-            vus: 2,
-            duration: '12s',
-            thresholds: {
-              checks: ['rate>0.99'],
-              http_req_failed: ['rate<0.01'],
-              http_req_duration: ['p(95)<1000'],
-            },
-          };
-
-          export default function () {
-            const response = http.get(`${__ENV.TARGET_URL}/api/greet?name=World`);
-            check(response, {
-              'correct greeting': (r) => r.status === 200 && r.json('message') === 'hello World',
-            });
-            sleep(0.2);
-          }
+    git:
+      uri: http://gitea:3000/demo/demo-echo-code.git
+      revision: "{{ config.revision }}"
+      paths:
+        - tests/load.js
   container:
-    workingDir: /data
+    workingDir: /data/repo/tests
   steps:
     - name: Generate synthetic traffic
       run:

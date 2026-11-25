@@ -1,7 +1,11 @@
 image:
   repository: registry:5000/demo-app-code
   tag: app-00000000-placeholder
+  digest: ""
   pullPolicy: IfNotPresent
+
+tests:
+  revision: ""
 
 replicas: 2
 faultMode: false

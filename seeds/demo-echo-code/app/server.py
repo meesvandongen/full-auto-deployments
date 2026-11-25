@@ -37,9 +37,11 @@ def handler(version=VERSION, faulty=FAULT_MODE):
             elif path.path == "/metrics":
                 with lock:
                     lines = [
+                        "# HELP echo_requests_total HTTP requests by status.",
                         "# TYPE echo_requests_total counter",
                         f'echo_requests_total{{status="ok"}} {counts["ok"]}',
                         f'echo_requests_total{{status="error"}} {counts["error"]}',
+                        "# HELP echo_check_success Functional canary check (1 for success).",
                         "# TYPE echo_check_success gauge",
                         f"echo_check_success{{version={json.dumps(version)}}} "
                         f'{int(greet("World", faulty) == "hello World")}',
