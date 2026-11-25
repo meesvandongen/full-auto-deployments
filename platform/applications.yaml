@@ -8,7 +8,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: http://gitea:3000/demo/full-auto.git
+    repoURL: https://gitea:3443/demo/full-auto.git
     targetRevision: stage/dev
     path: chart
   destination:
@@ -31,7 +31,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: http://gitea:3000/demo/full-auto.git
+    repoURL: https://gitea:3443/demo/full-auto.git
     targetRevision: stage/prod
     path: chart
   destination:

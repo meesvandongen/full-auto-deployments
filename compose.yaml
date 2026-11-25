@@ -17,6 +17,17 @@ services:
       - local
     restart: unless-stopped
 
+  gitea-tls:
+    image: docker.io/library/nginx:1.29-alpine
+    network_mode: service:gitea
+    depends_on:
+      - gitea
+    volumes:
+      - ./gitea-tls.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./.local/gitea.crt:/etc/nginx/certs/gitea.crt:ro
+      - ./.local/gitea.key:/etc/nginx/certs/gitea.key:ro
+    restart: unless-stopped
+
   registry:
     image: docker.io/library/registry:2
     ports:

@@ -14,7 +14,7 @@ fi
 kubectl apply -f platform/project.yaml
 kubectl wait --for=create namespace/demo --timeout=120s
 kubectl -n demo create secret generic gitops-repo \
-  --from-literal=repoURL=http://gitea:3000/demo/full-auto.git \
+  --from-literal=repoURL=https://gitea:3443/demo/full-auto.git \
   --from-literal=username=demo \
   --from-literal=password="$GITEA_ADMIN_PASSWORD" \
   --dry-run=client -o yaml |

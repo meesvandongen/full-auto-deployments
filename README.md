@@ -32,7 +32,7 @@ its Stages and Warehouse are defined with the application.
 | Local registry (from cluster) | `registry:5000` |
 | Registry HTTPS endpoint (Kargo image discovery) | `registry:5443` |
 | Git URL (from host) | `http://localhost:3000/demo/full-auto.git` |
-| Git URL (from cluster) | `http://gitea:3000/demo/full-auto.git` |
+| Git URL (from cluster) | `https://gitea:3443/demo/full-auto.git` |
 
 Generated passwords and the runner token are kept in `.local/credentials.env`
 (ignored by Git). The Gitea and Kargo administrator username is `demo` and
@@ -95,9 +95,9 @@ tests.
 
 The runner and its jobs have access to the host Docker socket and this setup
 binds an unauthenticated HTTP registry to loopback. Kargo's internal HTTPS
-registry endpoint uses a generated self-signed certificate with verification
-disabled in the local Warehouse. Use this only on a trusted local development
-machine. Running entirely without internet after setup also requires
+Git and registry endpoints use generated self-signed certificates with
+verification disabled in the local clients. Use this only on a trusted local
+development machine. Running entirely without internet after setup also requires
 mirroring or caching all controller, runner-job, and application images. The
 workflow does not download any third-party Actions.
 

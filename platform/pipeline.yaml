@@ -35,13 +35,14 @@ metadata:
 spec:
   vars:
     - name: gitopsRepo
-      value: http://gitea:3000/demo/full-auto.git
+      value: https://gitea:3443/demo/full-auto.git
     - name: imageRepo
       value: registry:5443/demo-app
   steps:
     - uses: git-clone
       config:
         repoURL: ${{ vars.gitopsRepo }}
+        insecureSkipTLSVerify: true
         checkout:
           - branch: main
             path: ./src

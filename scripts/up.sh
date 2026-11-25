@@ -29,6 +29,11 @@ if [[ ! -f .local/registry.crt || ! -f .local/registry.key ]]; then
     -subj '/CN=registry' -addext 'subjectAltName=DNS:registry' \
     -keyout .local/registry.key -out .local/registry.crt >/dev/null 2>&1
 fi
+if [[ ! -f .local/gitea.crt || ! -f .local/gitea.key ]]; then
+  openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+    -subj '/CN=gitea' -addext 'subjectAltName=DNS:gitea' \
+    -keyout .local/gitea.key -out .local/gitea.crt >/dev/null 2>&1
+fi
 
 compose() {
   docker compose --env-file .local/credentials.env "$@"
@@ -37,7 +42,7 @@ compose() {
 if ! docker network inspect full-auto >/dev/null 2>&1; then
   docker network create full-auto >/dev/null
 fi
-compose up -d gitea registry registry-tls
+compose up -d gitea gitea-tls registry registry-tls
 
 ready=false
 for ((attempt = 0; attempt < 90; attempt++)); do
@@ -110,9 +115,10 @@ helm upgrade --install kargo oci://ghcr.io/akuity/kargo-charts/kargo \
 
 kubectl -n argocd create secret generic local-gitea \
   --from-literal=type=git \
-  --from-literal=url=http://gitea:3000/demo/full-auto.git \
+  --from-literal=url=https://gitea:3443/demo/full-auto.git \
   --from-literal=username=demo \
   --from-literal=password="$GITEA_ADMIN_PASSWORD" \
+  --from-literal=insecure=true \
   --dry-run=client -o yaml |
   kubectl label --local -f - argocd.argoproj.io/secret-type=repository -o yaml |
   kubectl apply -f -
