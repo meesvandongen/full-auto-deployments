@@ -1,9 +1,18 @@
 # Local GitOps platform
 
-This repository contains a small Python HTTP application and a fully local
-CI/GitOps pipeline: Gitea Actions tests and builds an image, Kargo promotes it
-through dev and prod, Argo CD reconciles Git, and Argo Rollouts verifies a
-canary before completing an update.
+This is the infrastructure repository (published on GitHub). It holds
+bootstrap scripts and one-time seeds in `seeds/`; **it is not pushed to local
+Gitea**. The bootstrap creates three independent local Git repositories:
+
+| Repository | Owner of desired state |
+| --- | --- |
+| `demo/demo-app-code` | Python application, Dockerfile, and Gitea Actions CI |
+| `demo/demo-app-chart` | Helm chart; Kargo writes `stage/dev` and `stage/prod` branches |
+| `demo/app-of-apps` | Argo CD child Applications and Kargo project/pipeline |
+
+Gitea Actions tests code and publishes an image; Kargo promotes the image by
+updating the chart repository; Argo CD reconciles the app-of-apps and chart
+repositories; Argo Rollouts verifies a canary before completing an update.
 
 ## Requirements
 
@@ -16,22 +25,27 @@ Run:
 
 ```sh
 bash scripts/up.sh
+bash scripts/deploy-demo.sh
 ```
 
 The script can be rerun. It creates a single-node k3d cluster (`k3d-full-auto`),
 a Docker network, a persistent local Gitea server and OCI registry, a Gitea
-Actions runner, cert-manager, Argo CD, Argo Rollouts, and Kargo. It also creates
-the `demo/full-auto` Gitea repository and registers it with Argo CD. No GitHub
-repository is needed at runtime. Kargo will use this same local Git server when
-its Stages and Warehouse are defined with the application.
+Actions runner, cert-manager, Argo CD, Argo Rollouts, and Kargo. The deploy
+script seeds the three Gitea repositories from `seeds/` only if they have no
+`main` branch, then bootstraps the root Argo CD Application and local Git
+credentials. Subsequent runs leave the three Git histories alone. GitHub
+hosts the infrastructure repository; no hosted Git service is needed during
+the demo's deployment flow.
 
 ## URLs
 
 | Service | URL from your Mac | Access |
 | --- | --- | --- |
 | Gitea | http://localhost:3000 | Available after `scripts/up.sh` |
-| Demo repository and CI runs | http://localhost:3000/demo/full-auto and http://localhost:3000/demo/full-auto/actions | Available after the initial push |
-| Image registry tags | http://localhost:5001/v2/demo-app/tags/list | Available after the first successful CI build |
+| Code repository and CI runs | http://localhost:3000/demo/demo-app-code and http://localhost:3000/demo/demo-app-code/actions | Available after `scripts/deploy-demo.sh` |
+| Helm chart repository | http://localhost:3000/demo/demo-app-chart | Available after `scripts/deploy-demo.sh` |
+| App-of-apps repository | http://localhost:3000/demo/app-of-apps | Available after `scripts/deploy-demo.sh` |
+| Image registry tags | http://localhost:5001/v2/demo-app-code/tags/list | Available after the first successful CI build |
 | Argo CD | https://localhost:8081 | Port-forward required |
 | Kargo | https://localhost:8082 | Port-forward required |
 | Dev app | http://localhost:8083/api/double?value=21 | Port-forward required |
@@ -56,7 +70,8 @@ not for a browser on your Mac:
 
 | Component | Internal address |
 | --- | --- |
-| Gitea Git repository | `https://gitea:3443/demo/full-auto.git` |
+| Chart Git repository | `https://gitea:3443/demo/demo-app-chart.git` |
+| App-of-apps Git repository | `https://gitea:3443/demo/app-of-apps.git` |
 | Registry used for image pulls | `registry:5000` |
 | Registry used by Kargo for image discovery | `registry:5443` |
 
@@ -66,20 +81,32 @@ Generated passwords and the runner token are kept in `.local/credentials.env`
 `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d`.
 The other passwords are in `.local/credentials.env`; do not commit that file.
 
-Once this repository has an initial commit, push it to the local Gitea remote.
-The bootstrap does **not** silently commit or push your working tree:
+To check in an application change, clone the **code** repository once. Edit
+and commit there; pushing `main` triggers the pipeline. From this infrastructure
+directory:
 
 ```sh
-git remote add local http://localhost:3000/demo/full-auto.git
+git clone http://localhost:3000/demo/demo-app-code.git ../full-auto-demo-app-code
+# Edit files in ../full-auto-demo-app-code, then commit there:
+git -C ../full-auto-demo-app-code add -A
+git -C ../full-auto-demo-app-code commit -m "Update demo app"
 set -a; . .local/credentials.env; set +a
 GIT_ASKPASS="$PWD/scripts/git-askpass.sh" GIT_TERMINAL_PROMPT=0 \
-  git -c credential.helper= -c credential.interactive=always push -u local HEAD:main
-bash scripts/deploy-demo.sh
+  git -C ../full-auto-demo-app-code -c credential.helper= \
+  -c credential.interactive=always push origin main
 ```
 
-The workflow in `.gitea/workflows/build.yaml` runs containerized unit and HTTP
+Push infrastructure changes to GitHub with `git push origin main` from this
+directory; that does not trigger a demo deployment. Edit the Helm chart or
+app-of-apps configuration in their own Gitea clones if needed. Changes to the
+chart's `main` branch are copied to stage branches with the **next image
+promotion**, whereas changes to app-of-apps `main` are auto-synced by Argo CD.
+The `seeds/` copies are templates for **initial bootstrap**, not working
+clones or additional Git remotes for this checkout.
+
+The workflow in `seeds/demo-app-code/.gitea/workflows/build.yaml` runs containerized unit and HTTP
 tests on each push to `main`. If they pass, it publishes an immutable
-`build-<run number>-<commit>` tag to the local registry. Kargo's Warehouse
+`app-<run number>-<commit>` tag to the local registry. Kargo's Warehouse
 discovers that image; auto-promotion updates stage-specific Git branches,
 syncs Argo CD, verifies dev, then promotes the *same* image to prod. Kargo
 copies the Helm chart from `main`, updates `image.tag` in its values on
@@ -104,12 +131,14 @@ kubectl -n demo-prod get rollouts,analysisruns
 curl 'http://localhost:8083/api/double?value=21'
 ```
 
-For a canary-abort demonstration, set `faultMode: true` in the chart's
-`values.yaml`, commit, and push to local `main`. Tests still run, but `/check`
-reports a failed check while `/readyz` remains healthy. Rollouts should abort dev and Kargo must not
-promote that image to prod. Restore the setting in a subsequent commit to
-resume with a new image. This is a deliberate demo fault, not a way to skip
-tests.
+For a canary-abort demonstration, set `faultMode: true` in a clone of the
+chart repository's `chart/values.yaml`, commit and push the chart `main`
+branch, then push a code change to trigger a new image. Tests still run,
+but `/check` reports a failed check while
+`/readyz` remains healthy. Rollouts should abort dev and Kargo must not
+promote that image to prod. Restore the chart setting and push another code
+change to resume with a new image. This is a deliberate demo fault, not a way
+to skip tests.
 
 The runner and its jobs have access to the host Docker socket and this setup
 binds an unauthenticated HTTP registry to loopback. Kargo's internal HTTPS

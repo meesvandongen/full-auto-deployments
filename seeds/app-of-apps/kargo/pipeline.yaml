@@ -20,11 +20,11 @@ metadata:
 spec:
   subscriptions:
     - image:
-        repoURL: registry:5443/demo-app
+        repoURL: registry:5443/demo-app-code
         imageSelectionStrategy: Lexical
         insecureSkipTLSVerify: true
         allowTagsRegexes:
-          - ^build-[0-9]{8}-[0-9a-f]{12}$
+          - ^app-[0-9]{8}-[0-9a-f]{12}$
         discoveryLimit: 5
 ---
 apiVersion: kargo.akuity.io/v1alpha1
@@ -35,9 +35,9 @@ metadata:
 spec:
   vars:
     - name: gitopsRepo
-      value: https://gitea:3443/demo/full-auto.git
+      value: https://gitea:3443/demo/demo-app-chart.git
     - name: imageRepo
-      value: registry:5443/demo-app
+      value: registry:5443/demo-app-code
   steps:
     - uses: git-clone
       config:

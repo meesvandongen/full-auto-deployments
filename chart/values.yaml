@@ -1,7 +1,0 @@
-image:
-  repository: registry:5000/demo-app
-  tag: build-00000000-placeholder
-  pullPolicy: IfNotPresent
-
-replicas: 2
-faultMode: false

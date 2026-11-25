@@ -69,17 +69,19 @@ fi
 curl --silent --fail --user "demo:$GITEA_ADMIN_PASSWORD" \
   http://localhost:3000/api/v1/user >/dev/null
 
-status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
-  --user "demo:$GITEA_ADMIN_PASSWORD" http://localhost:3000/api/v1/repos/demo/full-auto)"
-if [[ "$status" == 404 ]]; then
-  curl --silent --show-error --fail --user "demo:$GITEA_ADMIN_PASSWORD" \
-    --header 'Content-Type: application/json' \
-    --data '{"name":"full-auto","default_branch":"main"}' \
-    http://localhost:3000/api/v1/user/repos >/dev/null
-elif [[ "$status" != 200 ]]; then
-  echo "Cannot check the local Git repository (HTTP $status)." >&2
-  exit 1
-fi
+for repo in demo-app-code demo-app-chart app-of-apps; do
+  status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+    --user "demo:$GITEA_ADMIN_PASSWORD" "http://localhost:3000/api/v1/repos/demo/$repo")"
+  if [[ "$status" == 404 ]]; then
+    curl --silent --show-error --fail --user "demo:$GITEA_ADMIN_PASSWORD" \
+      --header 'Content-Type: application/json' \
+      --data "{\"name\":\"$repo\",\"default_branch\":\"main\"}" \
+      http://localhost:3000/api/v1/user/repos >/dev/null
+  elif [[ "$status" != 200 ]]; then
+    echo "Cannot check the local $repo repository (HTTP $status)." >&2
+    exit 1
+  fi
+done
 compose up -d runner
 
 if ! k3d cluster list --no-headers | awk '{print $1}' | grep -qx full-auto; then
@@ -113,14 +115,16 @@ helm upgrade --install kargo oci://ghcr.io/akuity/kargo-charts/kargo \
   --version 1.12.7 --namespace kargo --set api.secret.name=kargo-admin \
   --wait --timeout 10m
 
-kubectl -n argocd create secret generic local-gitea \
-  --from-literal=type=git \
-  --from-literal=url=https://gitea:3443/demo/full-auto.git \
-  --from-literal=username=demo \
-  --from-literal=password="$GITEA_ADMIN_PASSWORD" \
-  --from-literal=insecure=true \
-  --dry-run=client -o yaml |
-  kubectl label --local -f - argocd.argoproj.io/secret-type=repository -o yaml |
-  kubectl apply -f -
+for repo in demo-app-chart app-of-apps; do
+  kubectl -n argocd create secret generic "local-$repo" \
+    --from-literal=type=git \
+    --from-literal=url="https://gitea:3443/demo/$repo.git" \
+    --from-literal=username=demo \
+    --from-literal=password="$GITEA_ADMIN_PASSWORD" \
+    --from-literal=insecure=true \
+    --dry-run=client -o yaml |
+    kubectl label --local -f - argocd.argoproj.io/secret-type=repository -o yaml |
+    kubectl apply -f -
+done
 
 echo "Infrastructure is ready. See README.md for access and the next steps."
