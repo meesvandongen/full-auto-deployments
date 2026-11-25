@@ -24,6 +24,11 @@ fi
 set -a
 source .local/credentials.env
 set +a
+if [[ ! -f .local/registry.crt || ! -f .local/registry.key ]]; then
+  openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+    -subj '/CN=registry' -addext 'subjectAltName=DNS:registry' \
+    -keyout .local/registry.key -out .local/registry.crt >/dev/null 2>&1
+fi
 
 compose() {
   docker compose --env-file .local/credentials.env "$@"
@@ -32,7 +37,7 @@ compose() {
 if ! docker network inspect full-auto >/dev/null 2>&1; then
   docker network create full-auto >/dev/null
 fi
-compose up -d gitea registry
+compose up -d gitea registry registry-tls
 
 ready=false
 for ((attempt = 0; attempt < 90; attempt++)); do

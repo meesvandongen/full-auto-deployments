@@ -29,7 +29,8 @@ its Stages and Warehouse are defined with the application.
 | --- | --- |
 | Gitea | http://localhost:3000 |
 | Local registry (from host) | `localhost:5001` |
-| Local registry (from cluster and runner) | `registry:5000` |
+| Local registry (from cluster) | `registry:5000` |
+| Registry HTTPS endpoint (Kargo image discovery) | `registry:5443` |
 | Git URL (from host) | `http://localhost:3000/demo/full-auto.git` |
 | Git URL (from cluster) | `http://gitea:3000/demo/full-auto.git` |
 
@@ -93,10 +94,12 @@ resume with a new image. This is a deliberate demo fault, not a way to skip
 tests.
 
 The runner and its jobs have access to the host Docker socket and this setup
-binds an unauthenticated HTTP registry to loopback. Use it only on a trusted
-local development machine. Running entirely without internet after setup
-also requires mirroring or caching all controller, runner-job, and application
-images. The workflow does not download any third-party Actions.
+binds an unauthenticated HTTP registry to loopback. Kargo's internal HTTPS
+registry endpoint uses a generated self-signed certificate with verification
+disabled in the local Warehouse. Use this only on a trusted local development
+machine. Running entirely without internet after setup also requires
+mirroring or caching all controller, runner-job, and application images. The
+workflow does not download any third-party Actions.
 
 To pause the Docker services: `docker compose --env-file .local/credentials.env stop`.
 To stop the cluster: `k3d cluster stop full-auto`. These commands preserve the
