@@ -95,6 +95,7 @@ helm repo add argo https://argoproj.github.io/argo-helm --force-update
 helm repo add jetstack https://charts.jetstack.io --force-update
 helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/ --force-update
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+helm repo add kubeshop https://kubeshop.github.io/helm-charts --force-update
 helm repo update
 
 helm upgrade --install cert-manager jetstack/cert-manager \
@@ -115,6 +116,12 @@ kubectl apply -f platform/headlamp-rbac.yaml
 helm upgrade --install prometheus prometheus-community/prometheus \
   --version 30.0.1 --namespace monitoring --create-namespace \
   --values platform/prometheus-values.yaml --wait --timeout 10m
+helm upgrade --install testkube kubeshop/testkube \
+  --version 2.15.3 --namespace testkube --create-namespace \
+  --set installCRDs=true \
+  --set mongodb.enabled=false --set postgresql.enabled=true \
+  --set testkube-api.mongodb.enabled=false --set testkube-api.postgresql.enabled=true \
+  --set testkube-api.analyticsEnabled=false --wait --timeout 10m
 
 kubectl create namespace kargo --dry-run=client -o yaml | kubectl apply -f -
 password_hash="$(printf '%s' "$KARGO_ADMIN_PASSWORD" | kargo hash-password --password-stdin)"

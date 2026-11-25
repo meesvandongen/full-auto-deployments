@@ -18,7 +18,8 @@ repositories; Argo Rollouts verifies a canary before completing an update.
 
 Docker with Compose, `k3d`, `kubectl`, Helm, the Kargo CLI, `openssl`, and `curl`.
 On macOS, `brew install k3d kargo kubernetes-cli helm` installs the less common
-tools. Allow several GB of memory and internet access for the initial image and
+tools. `brew install testkube` is optional for manually running synthetic
+tests. Allow several GB of memory and internet access for the initial image and
 chart pulls.
 
 Run:
@@ -30,8 +31,8 @@ bash scripts/deploy-demo.sh
 
 The script can be rerun. It creates a single-node k3d cluster (`k3d-full-auto`),
 a Docker network, a persistent local Gitea server and OCI registry, a Gitea
-Actions runner, cert-manager, Argo CD, Argo Rollouts, Kargo, Headlamp, and a
-small Prometheus server. The deploy
+Actions runner, cert-manager, Argo CD, Argo Rollouts, Kargo, Headlamp, a
+small Prometheus server, and the standalone Testkube runner. The deploy
 script seeds the three Gitea repositories from `seeds/` only if they have no
 `main` branch, then bootstraps the root Argo CD Application and local Git
 credentials. Subsequent runs leave the three Git histories alone. GitHub
@@ -130,18 +131,32 @@ copies the Helm chart from `main`, updates `image.tag` in its values on
 
 The app implements `/api/double?value=21`, `/livez`, `/readyz`, `/check`, and
 `/metrics`. Kubernetes probes use the liveness and readiness endpoints. Argo
-Rollouts calls `/check` through its canary-only Service and queries Prometheus
-for `demo_check_success` from the *new image version*: either failing signal
-aborts the rollout. Missing gauge data also fails the analysis; it does not
-count as success.
-Kargo waits for Argo CD health and independently checks `/api/double` before
-making dev Freight eligible for prod. Requests are logged as JSON to stdout;
+Rollouts calls `/check` through its canary-only Service, queries Prometheus
+for `demo_check_success` from the *new image version*, and runs the Testkube
+k6 workflow against that canary. A failing signal aborts the rollout; missing
+gauge data cannot count as success.
+Kargo waits for Argo CD health, checks `/api/double`, and reruns the same k6
+Test Workflow against the stable stage before making dev Freight eligible for
+prod. The workflow sends about ten requests per second for twelve seconds and
+fails on incorrect answers, HTTP errors above 1%, or
+95th-percentile latency above one second. Testkube runs entirely inside the
+cluster; its standalone mode has no local web dashboard. Requests are logged as
+JSON to stdout;
 `/metrics` exposes Prometheus-format request counters and the behavior gauge.
 Prometheus scrapes the dev and prod canary Services every five seconds. The
 gauge is a synthetic functional check, not a production SLO: evaluating real
 error rates or latency would also require representative traffic, a time
 window, and enough samples. CI unit/HTTP tests, Kubernetes readiness, Rollouts
-analysis, and Kargo verification are distinct gates.
+analysis, and Kargo's k6 verification are distinct gates.
+
+To run the same synthetic load test manually and inspect its results locally
+without uploading logs to a hosted viewer:
+
+```sh
+testkube set context --kubeconfig --namespace testkube
+testkube run testworkflow demo-app-load \
+  --config target=http://demo-app.demo-dev.svc.cluster.local --watch
+```
 
 To inspect the deployment:
 

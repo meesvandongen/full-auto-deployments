@@ -86,6 +86,7 @@ metadata:
 spec:
   args:
     - name: url
+    - name: base-url
   metrics:
     - name: behavior
       count: 3
@@ -96,6 +97,30 @@ spec:
         web:
           url: "{{ args.url }}"
           jsonPath: "{$.result}"
+    - name: synthetic-traffic
+      count: 1
+      successCondition: result.exitCode == 0
+      failureCondition: result.exitCode != 0
+      provider:
+        job:
+          spec:
+            backoffLimit: 0
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: testkube
+                    image: kubeshop/testkube-cli:2.15.3
+                    env:
+                      - name: DO_NOT_TRACK
+                        value: "1"
+                    command: ["/bin/sh", "-c"]
+                    args:
+                      - |
+                        testkube --client direct \
+                          --api-uri http://testkube-api-server.testkube.svc.cluster.local:8088 \
+                          --namespace testkube run testworkflow demo-app-load \
+                          --config "target={{ args.base-url }}" --watch
 ---
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
@@ -120,6 +145,8 @@ spec:
     args:
       - name: url
         value: http://demo-app.demo-dev.svc.cluster.local/api/double?value=21
+      - name: base-url
+        value: http://demo-app.demo-dev.svc.cluster.local
 ---
 apiVersion: kargo.akuity.io/v1alpha1
 kind: Stage
@@ -147,3 +174,5 @@ spec:
     args:
       - name: url
         value: http://demo-app.demo-prod.svc.cluster.local/api/double?value=21
+      - name: base-url
+        value: http://demo-app.demo-prod.svc.cluster.local
