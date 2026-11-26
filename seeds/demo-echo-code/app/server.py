@@ -4,10 +4,14 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Lock
 from urllib.parse import parse_qs, urlsplit
+from urllib.error import HTTPError, URLError
+
+from double_client import double
 
 
 VERSION = os.environ.get("APP_VERSION", "local")
 FAULT_MODE = os.environ.get("FAULT_MODE") == "1"
+DOUBLE_URL = os.environ.get("DOUBLE_URL", "http://demo-app.demo-dev.svc.cluster.local")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 
@@ -15,7 +19,7 @@ def greet(name, faulty=False):
     return f"hello {name}" + ("!" if faulty else "")
 
 
-def handler(version=VERSION, faulty=FAULT_MODE):
+def handler(version=VERSION, faulty=FAULT_MODE, double_url=DOUBLE_URL):
     counts = {"ok": 0, "error": 0}
     lock = Lock()
 
@@ -28,12 +32,26 @@ def handler(version=VERSION, faulty=FAULT_MODE):
             elif path.path == "/check":
                 body = {"ok": greet("World", faulty) == "hello World", "version": version}
             elif path.path == "/api/greet":
-                names = parse_qs(path.query).get("name", [])
+                query = parse_qs(path.query, keep_blank_values=True)
+                names = query.get("name", [])
                 if not names or not names[0].strip():
                     status = 400
                     body = {"error": "name is required"}
                 else:
                     body = {"message": greet(names[0], faulty), "version": version}
+                    if "value" in query:
+                        try:
+                            value = int(query["value"][0])
+                        except ValueError:
+                            status = 400
+                            body = {"error": "value must be an integer"}
+                        else:
+                            try:
+                                body["doubled"] = double(value, double_url)
+                            except (HTTPError, URLError, ValueError, KeyError) as error:
+                                logging.error("Double provider request failed: %s", error)
+                                status = 502
+                                body = {"error": "Double provider unavailable"}
             elif path.path == "/metrics":
                 with lock:
                     lines = [

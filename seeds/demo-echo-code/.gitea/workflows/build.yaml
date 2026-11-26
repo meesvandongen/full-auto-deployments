@@ -40,4 +40,22 @@ jobs:
             docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.16.0 check metrics
           docker run --rm --network full-auto --entrypoint k6 \
             -e "TARGET_URL=http://ci-$tag:8080" "local/k6-test:$tag" run load.js
+          docker build --target pact-test -t "local/pact-consumer:$tag" .
+          pact_container="$(docker create "local/pact-consumer:$tag")"
+          docker start -a "$pact_container"
+          mkdir -p pacts
+          docker cp "$pact_container:/tmp/pacts/." pacts/
+          docker rm "$pact_container"
+          publisher="$(docker create --network full-auto \
+            -e PACT_BROKER_BASE_URL=http://k3d-full-auto-server-0:30929 \
+            pactfoundation/pact-cli@sha256:328565c63fcd516c91ab9a3787231424e55ba22c05b082ab648dd67d841b47d9 \
+            pact-broker publish /pacts \
+            --consumer-app-version "$COMMIT_SHA" --branch main)"
+          docker cp pacts "$publisher:/pacts"
+          docker start -a "$publisher"
+          docker rm "$publisher"
+          git clone http://gitea:3000/demo/demo-app-code.git /tmp/provider
+          cd /tmp/provider
+          PACT_BROKER_BASE_URL=http://k3d-full-auto-server-0:30929 sh pact/verify-provider.sh
+          cd /tmp/source
           docker push "$image"

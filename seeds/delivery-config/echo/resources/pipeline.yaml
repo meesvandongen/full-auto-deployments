@@ -52,6 +52,21 @@ spec:
     - name: codeRepo
       value: https://gitea:3443/demo/demo-echo-code.git
   steps:
+    - uses: http
+      config:
+        url: http://pact-broker.pact.svc.cluster.local/matrix
+        queryParams:
+          - name: q[][pacticipant]
+            value: echo-app
+          - name: q[][version]
+            value: ${{ commitFrom(vars.codeRepo).ID }}
+          - name: environment
+            value: ${{ ctx.stage }}
+          - name: latestby
+            value: cvpv
+        successExpression: response.status == 200 && response.body.summary.deployable == true
+        failureExpression: response.status != 200 || response.body.summary.deployable != true
+        errorExpression: response.body.summary?.reason
     - uses: git-clone
       config:
         repoURL: ${{ vars.gitopsRepo }}
@@ -79,6 +94,8 @@ spec:
             value: ${{ imageFrom(vars.imageRepo).Digest }}
           - key: tests.revision
             value: ${{ commitFrom(vars.codeRepo).ID }}
+          - key: double.url
+            value: http://demo-app.demo-${{ ctx.stage }}.svc.cluster.local
     - uses: git-commit
       as: commit
       config:
@@ -94,6 +111,29 @@ spec:
             sources:
               - repoURL: ${{ vars.gitopsRepo }}
                 desiredRevision: ${{ task.outputs.commit.commit }}
+    - uses: argocd-wait
+      config:
+        apps:
+          - name: echo-${{ ctx.stage }}
+    - uses: http
+      as: deployment-link
+      config:
+        url: http://pact-broker.pact.svc.cluster.local/pacticipants/echo-app/versions/${{ commitFrom(vars.codeRepo).ID }}
+        successExpression: response.status == 200
+        failureExpression: response.status != 200
+        outputs:
+          - name: href
+            fromExpression: find(response.body._links["pb:record-deployment"], {#.name == "${{ ctx.stage }}"}).href
+    - uses: http
+      config:
+        method: POST
+        url: ${{ task.outputs['deployment-link'].href }}
+        headers:
+          - name: Content-Type
+            value: application/json
+        body: "{}"
+        successExpression: response.status == 201 || response.status == 200
+        failureExpression: response.status != 201 && response.status != 200
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate
@@ -115,6 +155,14 @@ spec:
         web:
           url: "{{ args.url }}"
           jsonPath: "{$.message}"
+    - name: double-dependency
+      count: 1
+      successCondition: result == 14
+      failureLimit: 0
+      provider:
+        web:
+          url: "{{ args.base-url }}/api/greet?name=World&value=7"
+          jsonPath: "{$.doubled}"
     - name: synthetic-traffic
       count: 1
       successCondition: result.exitCode == 0

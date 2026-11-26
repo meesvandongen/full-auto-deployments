@@ -9,3 +9,5 @@ tests:
 
 replicas: 2
 faultMode: false
+double:
+  url: http://demo-app.demo-dev.svc.cluster.local

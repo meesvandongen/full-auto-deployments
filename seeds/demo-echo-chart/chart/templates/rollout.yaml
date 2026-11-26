@@ -20,6 +20,8 @@ spec:
           env:
             - name: FAULT_MODE
               value: {{ ternary "1" "0" .Values.faultMode | quote }}
+            - name: DOUBLE_URL
+              value: {{ .Values.double.url | quote }}
           ports:
             - name: http
               containerPort: 8080

@@ -16,6 +16,9 @@ Gitea**. The bootstrap creates six independent local Git repositories:
 Gitea Actions tests code and publishes an image; Kargo promotes the image by
 updating the chart repository; Argo CD reconciles the app-of-apps and chart
 repositories; Argo Rollouts verifies a canary before completing an update.
+Echo also consumes Double's `/api/double` endpoint. Pact contracts protect
+that dependency before a candidate image is released, independently of the
+existing k6 checks of deployed services.
 
 ## Requirements
 
@@ -35,12 +38,27 @@ bash scripts/deploy-demo.sh
 The script can be rerun. It creates a single-node k3d cluster (`k3d-full-auto`),
 a Docker network, a persistent local Gitea server and OCI registry, a Gitea
 Actions runner, cert-manager, Argo CD, Argo Rollouts, Kargo, Headlamp, a
-small Prometheus server, and the standalone Testkube runner. The deploy
+small Prometheus server, the standalone Testkube runner, and a self-hosted
+Pact Broker with persistent PostgreSQL in the `pact` namespace. The deploy
 script seeds the six Gitea repositories from `seeds/` only if they have no
 `main` branch, then bootstraps the root Argo CD Application, Kargo Projects,
-and local Git credentials. Subsequent runs leave the Git histories alone. GitHub
+and local Git credentials. On the first run, it waits until Double has reached
+prod before seeding Echo, so the first consumer deployment can pass the Pact
+gate. Subsequent runs leave the Git histories alone. GitHub
 hosts the infrastructure repository; no hosted Git service is needed during
 the demo's deployment flow.
+
+When using a second worktree with an **already initialized** local platform,
+copy `.local/credentials.env` from the original checkout into this worktree's
+`.local/` before running `scripts/up.sh`. The script adds a new Pact database
+password if necessary; it refuses to generate new Gitea credentials against an
+existing Gitea volume. Compose uses the same fixed project name from either
+worktree. The seed files do not update Gitea repositories that already have a
+`main` branch. For an existing demo, migrate the corresponding Gitea repositories
+deliberately (suspend Echo auto-promotion while updating its chart and code,
+and record the already deployed Double version), or bootstrap a fresh local
+platform. Rerunning the seed script alone will not update existing Gitea
+histories.
 
 ## Endpoints and credentials
 
@@ -58,6 +76,7 @@ certificate warning. Gitea and the registry use separate loopback ports.
 | Kargo (Freight, Stages, promotions) | https://kargo.localhost:8443 | `admin` / `KARGO_ADMIN_PASSWORD` |
 | Headlamp (cluster resources) | https://headlamp.localhost:8443 | Short-lived read-only Kubernetes token below |
 | Prometheus (queries and targets) | https://prometheus.localhost:8443 | No login; loopback-only ingress |
+| Pact Broker (contracts and compatibility matrix) | http://localhost:9292 | No login; local demo only |
 
 Headlamp can view nodes, volumes, and Argo/Kargo resources but cannot read
 Secrets or modify workloads. Standalone Testkube has **no local web UI**;
@@ -69,6 +88,10 @@ use its CLI with the `k3d-full-auto` kubeconfig context to inspect executions.
 | --- | --- | --- | --- |
 | Double | https://dev.localhost:8443/api/double?value=21 | https://prod.localhost:8443/api/double?value=21 | None |
 | Echo | https://echo-dev.localhost:8443/api/greet?name=World | https://echo-prod.localhost:8443/api/greet?name=World | None |
+
+Add `&value=7` to an Echo greeting URL to ask the Double provider for the
+calculated value: a compatible response includes `"doubled":14`. Without
+`value`, Echo keeps its original standalone behavior.
 
 Each app also exposes `/livez` (liveness), `/readyz` (readiness), `/check`
 (behavioral verification), and `/metrics` (Prometheus text format) at the
@@ -135,6 +158,7 @@ These are reachable from containers or pods, **not** from your Mac's browser:
 | Prometheus API | `http://prometheus-server.monitoring.svc.cluster.local:80` | None; cluster-internal |
 | Testkube standalone API | `http://testkube-api-server.testkube.svc.cluster.local:8088` | None; cluster-internal |
 | Headlamp service | `http://headlamp.headlamp.svc.cluster.local:80` | Kubernetes token |
+| Pact Broker in Kubernetes | `http://pact-broker.pact.svc.cluster.local` | None; CI uses `http://k3d-full-auto-server-0:30929` on the Docker network |
 
 To check in an application change, clone the **code** repository once. Edit
 and commit there; pushing `main` triggers the pipeline. From this infrastructure
@@ -172,7 +196,16 @@ clones or additional Git remotes for this checkout.
 
 Each code repo's Gitea workflow runs unit tests, validates the running app's
 Prometheus exposition with `promtool`, and runs its colocated k6 script against
-the candidate image. Only then does it publish an image tagged with the CI run
+the candidate image. Echo additionally tests its real Double HTTP client
+against a Pact mock and publishes a versioned consumer contract using its Git
+SHA. Its CI then runs the Double provider verifier against the provider's
+current `main` commit; Double CI also runs that verifier on every provider
+change. The verifier fetches Echo's main and deployed contracts from the
+Broker and publishes results under the provider Git SHA. A failing
+verification of an established pact prevents an image from being published;
+a new pending pact may publish a failed result without breaking the provider
+build, but `can-i-deploy` still blocks the incompatible consumer. Only then
+does CI publish an image tagged with the CI run
 number and full code commit SHA. Kargo's Warehouse discovers a matching image
 and code commit together with a chart Git commit, creating one immutable
 Freight tuple. A pending or failed CI build cannot pair an old image with new
@@ -194,6 +227,39 @@ The automatically generated image tag (`app-<run>-<full-code-SHA>` or
 deployment identity; the code and chart commit SHAs pin the test and
 configuration. Semantic versioning is optional for human-facing releases or
 compatibility policies, not needed to make this GitOps promotion reproducible.
+
+### Pact release gate
+
+The open-source Broker tracks `dev` and `prod` as distinct environments.
+Before either app's Kargo PromotionTask changes a chart branch, its HTTP step
+queries the Broker's `/matrix` endpoint for `can-i-deploy` compatibility with
+the versions currently recorded in that environment. A missing or failed
+verification stops the promotion. After Argo CD reports the new Rollout
+healthy and synced, the task records the actual deployed Git SHA via the
+Broker's deployment API. The provider can be deployed first with no consumers;
+Echo cannot be deployed until the provider is recorded and verification
+passed. The Broker is local-only, unauthenticated, and not suitable as a
+production installation without access control and TLS.
+
+To inspect compatibility after bootstrap, substitute an actual code Git SHA:
+
+```sh
+docker run --rm --network full-auto \
+  -e PACT_BROKER_BASE_URL=http://k3d-full-auto-server-0:30929 \
+  pactfoundation/pact-cli@sha256:328565c63fcd516c91ab9a3787231424e55ba22c05b082ab648dd67d841b47d9 \
+  pact-broker can-i-deploy \
+  --pacticipant echo-app --version ECHO_CODE_SHA --to-environment dev
+kubectl -n pact get pods
+```
+
+For a contract-specific failure demo, change Double's `double()` function in
+the **Gitea code clone** so that it returns a wrong result only for `value=7`
+and push that commit. The Double unit/k6 checks still exercise `value=21`,
+but Pact's provider verification rejects the candidate against Echo's
+published expectation of `14`. CI does not push an incompatible image; the
+Broker matrix shows that the candidate SHA cannot be deployed. Restore
+compatibility in a subsequent commit. This is consumer-driven verification
+against a running candidate, not an OpenAPI-only comparison.
 
 ### Stage rollback gap
 

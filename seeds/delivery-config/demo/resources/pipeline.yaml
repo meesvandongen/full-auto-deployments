@@ -52,6 +52,21 @@ spec:
     - name: codeRepo
       value: https://gitea:3443/demo/demo-app-code.git
   steps:
+    - uses: http
+      config:
+        url: http://pact-broker.pact.svc.cluster.local/matrix
+        queryParams:
+          - name: q[][pacticipant]
+            value: demo-app
+          - name: q[][version]
+            value: ${{ commitFrom(vars.codeRepo).ID }}
+          - name: environment
+            value: ${{ ctx.stage }}
+          - name: latestby
+            value: cvpv
+        successExpression: response.status == 200 && response.body.summary.deployable == true
+        failureExpression: response.status != 200 || response.body.summary.deployable != true
+        errorExpression: response.body.summary?.reason
     - uses: git-clone
       config:
         repoURL: ${{ vars.gitopsRepo }}
@@ -94,6 +109,29 @@ spec:
             sources:
               - repoURL: ${{ vars.gitopsRepo }}
                 desiredRevision: ${{ task.outputs.commit.commit }}
+    - uses: argocd-wait
+      config:
+        apps:
+          - name: demo-${{ ctx.stage }}
+    - uses: http
+      as: deployment-link
+      config:
+        url: http://pact-broker.pact.svc.cluster.local/pacticipants/demo-app/versions/${{ commitFrom(vars.codeRepo).ID }}
+        successExpression: response.status == 200
+        failureExpression: response.status != 200
+        outputs:
+          - name: href
+            fromExpression: find(response.body._links["pb:record-deployment"], {#.name == "${{ ctx.stage }}"}).href
+    - uses: http
+      config:
+        method: POST
+        url: ${{ task.outputs['deployment-link'].href }}
+        headers:
+          - name: Content-Type
+            value: application/json
+        body: "{}"
+        successExpression: response.status == 201 || response.status == 200
+        failureExpression: response.status != 201 && response.status != 200
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AnalysisTemplate

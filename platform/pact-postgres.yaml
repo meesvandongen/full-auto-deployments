@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pact-postgres
+  namespace: pact
+spec:
+  selector:
+    app: pact-postgres
+  ports:
+    - port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pact-postgres
+  namespace: pact
+spec:
+  serviceName: pact-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pact-postgres
+  template:
+    metadata:
+      labels:
+        app: pact-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18
+          env:
+            - name: POSTGRES_DB
+              value: pact
+            - name: POSTGRES_USER
+              value: pact
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pact-db
+                  key: password
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, pact, -d, pact]
+            periodSeconds: 5
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 1Gi

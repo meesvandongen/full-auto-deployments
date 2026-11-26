@@ -15,6 +15,14 @@ spec:
         web:
           url: http://echo-app-canary.{{ .Release.Namespace }}.svc.cluster.local/check
           jsonPath: "{$}"
+    - name: double-dependency
+      count: 1
+      successCondition: result == 14
+      failureLimit: 0
+      provider:
+        web:
+          url: http://echo-app-canary.{{ .Release.Namespace }}.svc.cluster.local/api/greet?name=World&value=7
+          jsonPath: "{$.doubled}"
     - name: canary-gauge
       initialDelay: 20s
       count: 3

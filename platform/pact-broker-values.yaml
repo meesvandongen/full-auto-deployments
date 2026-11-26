@@ -1,0 +1,20 @@
+broker:
+  config:
+    hidePactflowMessages: true
+    basicAuth:
+      enabled: false
+service:
+  type: NodePort
+  nodePorts:
+    http: 30929
+ingress:
+  enabled: false
+database:
+  adapter: postgres
+  host: pact-postgres.pact.svc.cluster.local
+  port: "5432"
+  databaseName: pact
+  auth:
+    username: pact
+    existingSecret: pact-db
+    existingSecretPasswordKey: password

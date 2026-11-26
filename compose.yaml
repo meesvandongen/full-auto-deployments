@@ -1,3 +1,5 @@
+name: full-auto-deployments
+
 services:
   gitea:
     image: docker.io/gitea/gitea:1.25.5

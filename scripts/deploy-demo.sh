@@ -63,5 +63,10 @@ for app in demo-delivery echo-delivery; do
     --for=jsonpath='{.status.sync.status}'=Synced --timeout=120s
 done
 seed_repo demo-app-code
+if ! git ls-remote http://localhost:3000/demo/demo-echo-code.git refs/heads/main |
+  grep -q 'refs/heads/main'; then
+  kubectl -n demo wait stage/prod \
+    --for=jsonpath='{.status.lastPromotion.status.phase}'=Succeeded --timeout=15m
+fi
 seed_repo demo-echo-code
 echo "Demo pipelines installed. Watch: kubectl -n demo get freight,promotions,stages -w"

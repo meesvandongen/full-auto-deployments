@@ -4,6 +4,7 @@ import unittest
 from http.server import ThreadingHTTPServer
 from urllib.error import HTTPError
 from urllib.request import urlopen
+from unittest.mock import patch
 
 from server import handler
 
@@ -47,6 +48,23 @@ class HealthyServerTests(ServerTests):
         self.assertIn('echo_requests_total{status="ok"} 1\n', metrics)
         self.assertIn('echo_requests_total{status="error"} 1\n', metrics)
         self.assertIn('echo_check_success{version="test"} 1\n', metrics)
+
+    def test_greeting_with_double_calls_provider(self):
+        with patch("server.double", return_value=14) as request_double:
+            self.assertEqual(
+                self.request("/api/greet?name=World&value=7"),
+                (200, {"message": "hello World", "version": "test", "doubled": 14}),
+            )
+        request_double.assert_called_once_with(7, "http://demo-app.demo-dev.svc.cluster.local")
+
+    def test_provider_failure_is_reported(self):
+        with patch("server.double", side_effect=ValueError("invalid response")):
+            self.assertEqual(
+                self.request("/api/greet?name=World&value=7"),
+                (502, {"error": "Double provider unavailable"}),
+            )
+        self.assertEqual(self.request("/api/greet?name=World&value=bad")[0], 400)
+        self.assertEqual(self.request("/api/greet?name=World&value=")[0], 400)
 
 
 class FaultyServerTests(ServerTests):

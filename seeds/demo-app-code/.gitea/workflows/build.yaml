@@ -40,4 +40,5 @@ jobs:
             docker run --rm -i --entrypoint promtool quay.io/prometheus/prometheus:v3.16.0 check metrics
           docker run --rm --network full-auto --entrypoint k6 \
             -e "TARGET_URL=http://ci-$tag:8080" "local/k6-test:$tag" run load.js
+          PACT_BROKER_BASE_URL=http://k3d-full-auto-server-0:30929 sh pact/verify-provider.sh
           docker push "$image"
